@@ -1,330 +1,557 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SC Scanner</title>
+  <link rel="icon" type="image/x-icon" href="/assets/BlightVeil.ico">
+  <style>
     :root {
-      --hud-bg: rgba(10, 24, 46, 0.72);
-      --hud-border: rgba(88, 212, 255, 0.65);
-      --hud-shadow: rgba(23, 122, 178, 0.45);
-      --hud-text: #def7ff;
-      --hud-muted: #7bb6d8;
-      --hud-accent: #5ee5ff;
-      --hud-accent-dark: rgba(39, 120, 205, 0.65);
-      --hud-table-bg: rgba(5, 18, 36, 0.75);
+      --bg:            #020a18;
+      --surface:       rgba(8, 22, 45, 0.88);
+      --surface2:      rgba(12, 32, 60, 0.75);
+      --border:        rgba(88, 212, 255, 0.18);
+      --border-bright: rgba(88, 212, 255, 0.55);
+      --text:          #d8f4ff;
+      --muted:         #5f8da8;
+      --accent:        #5ee5ff;
+      --glow:          rgba(94, 229, 255, 0.35);
+      --highest:       #E88AFF;
+      --high:          #63E64C;
+      --medium:        #E6E14C;
+      --low:           #E69E4C;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none; }
 
     body {
-      margin: 0;
-      font-family: 'Segoe UI', 'Orbitron', 'Exo 2', sans-serif;
-      background: radial-gradient(circle at top, rgba(32, 97, 184, 0.35), rgba(4, 12, 28, 0)) transparent;
-      color: var(--hud-text);
-    }
-
-    .hud-wrap {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', 'Exo 2', sans-serif;
       min-height: 100vh;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      backdrop-filter: blur(2px);
+      flex-direction: column;
     }
 
-    .hud-container {
-      position: relative;
-      width: min(420px, 100%);
-      padding: 18px 22px 24px;
-      background: var(--hud-bg);
-      border: 1px solid var(--hud-border);
-      border-radius: 18px;
-      box-shadow: 0 16px 45px var(--hud-shadow), inset 0 0 35px rgba(108, 208, 255, 0.08);
-      backdrop-filter: blur(22px) saturate(160%);
-      overflow: hidden;
-    }
-
-    .hud-container::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, rgba(94, 229, 255, 0.12), transparent 45%);
-      pointer-events: none;
-    }
-
-    .hud-container::after {
-      content: "";
-      position: absolute;
-      left: -40%;
-      top: -60%;
-      width: 90%;
-      height: 220%;
-      transform: translateX(-30%) rotate(25deg);
-      background: linear-gradient(transparent 20%, rgba(94, 229, 255, 0.12) 40%, transparent 60%);
-      animation: sweep 8s linear infinite;
-      pointer-events: none;
-    }
-
-    @keyframes sweep {
-      0% { transform: translateX(-30%) rotate(25deg); }
-      100% { transform: translateX(120%) rotate(25deg); }
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 26px;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      text-shadow: 0 0 12px rgba(94, 229, 255, 0.65);
-    }
-
-    .hud-subtitle {
-      margin: 4px 0 2px;
-      font-size: 14px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--hud-muted);
-    }
-
-    .hud-raw {
-      margin-top: 6px;
-      font-size: 11px;
-      color: rgba(222, 247, 255, 0.65);
-      letter-spacing: 0.6px;
-    }
-
-    .hud-header {
+    /* ── Header ── */
+    .hdr {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      padding: 11px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      flex-shrink: 0;
+    }
+
+    .hdr-banner {
+      height: 34px;
+      width: auto;
+      object-fit: contain;
+      display: block;
     }
 
     .toggle-group {
       display: flex;
-      gap: 8px;
-      background: rgba(10, 35, 61, 0.6);
-      padding: 6px;
+      gap: 5px;
+      background: rgba(4, 14, 30, 0.8);
+      padding: 4px;
       border-radius: 999px;
-      border: 1px solid rgba(94, 229, 255, 0.2);
-      box-shadow: inset 0 0 12px rgba(94, 229, 255, 0.12);
+      border: 1px solid var(--border);
     }
 
-    .toggle-pill {
-      position: relative;
-    }
-
-    .toggle-pill input {
-      position: absolute;
-      opacity: 0;
-      pointer-events: none;
-    }
-
+    .toggle-pill { position: relative; }
+    .toggle-pill input { position: absolute; opacity: 0; pointer-events: none; }
     .toggle-pill span {
       display: inline-block;
-      padding: 6px 16px;
-      font-size: 12px;
-      letter-spacing: 1.2px;
+      padding: 5px 14px;
+      font-size: 11px;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
-      color: var(--hud-muted);
+      color: var(--muted);
       border-radius: 999px;
-      background: rgba(8, 26, 48, 0.55);
-      transition: all 0.25s ease;
-      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all .22s;
     }
-
     .toggle-pill input:checked + span {
-      color: var(--hud-text);
-      border-color: rgba(94, 229, 255, 0.6);
-      background: linear-gradient(135deg, rgba(39, 120, 205, 0.6), rgba(94, 229, 255, 0.35));
-      box-shadow: 0 0 14px rgba(94, 229, 255, 0.55);
+      color: var(--text);
+      background: linear-gradient(135deg, rgba(39, 120, 205, .65), rgba(94, 229, 255, .35));
+      box-shadow: 0 0 12px rgba(94, 229, 255, .45);
     }
 
-    .legend {
-      margin-top: 12px;
+    /* ── Scroll area ── */
+    .scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px 80px;
+    }
+
+    .stack { display: flex; flex-direction: column; gap: 12px; max-width: 480px; margin: 0 auto; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 6px 28px rgba(0,0,0,.45), inset 0 0 22px rgba(94,229,255,.03);
+      transition: border-color .3s, box-shadow .3s;
+    }
+
+    .card.active {
+      border-color: var(--border-bright);
+      box-shadow: 0 6px 28px rgba(0,0,0,.45), 0 0 22px rgba(94,229,255,.12), inset 0 0 22px rgba(94,229,255,.05);
+    }
+
+    .card-label {
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Scan result ── */
+    .result-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .ore-name {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      line-height: 1.05;
+      transition: color .3s, text-shadow .3s;
+      word-break: break-word;
+    }
+
+    .ore-name.empty {
+      font-size: 18px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .tier-badge {
+      flex-shrink: 0;
+      margin-top: 3px;
+      padding: 5px 13px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #020a18;
+    }
+
+    .tags {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      font-size: 11px;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--hud-muted);
+      margin-top: 10px;
     }
 
-    .legend span {
-      padding: 4px 10px;
+    .tag {
+      padding: 3px 10px;
       border-radius: 999px;
-      font-weight: 600;
-      color: #02131f;
-      box-shadow: 0 0 10px rgba(94, 229, 255, 0.25);
+      font-size: 11px;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      border: 1px solid var(--border);
+      color: var(--muted);
     }
 
-    .hud-empty {
-      margin-top: 16px;
-      padding: 14px 16px;
-      border-radius: 12px;
-      border: 1px dashed rgba(94, 229, 255, 0.35);
-      background: rgba(8, 26, 48, 0.5);
-      color: var(--hud-muted);
-      font-size: 12px;
+    .tag.highlight {
+      border-color: rgba(128, 128, 128, 0.35);
+    }
+
+    .deposits-badge {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+      text-shadow: 0 0 10px var(--glow);
+    }
+
+    .code-line {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      font-family: 'Consolas', monospace;
+      letter-spacing: .8px;
+    }
+
+    /* waiting pulse */
+    .waiting { text-align: center; padding: 18px 0 6px; }
+    .pulse-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 1.6s ease-in-out infinite;
+      margin-bottom: 10px;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:.25; transform:scale(.8); }
+      50%      { opacity: 1; transform:scale(1.25); }
+    }
+
+    /* flash animation on new result */
+    @keyframes flash {
+      0%   { box-shadow: 0 0 0 0 rgba(94,229,255,.7), inset 0 0 22px rgba(94,229,255,.03); }
+      45%  { box-shadow: 0 0 24px 6px rgba(94,229,255,.35), inset 0 0 30px rgba(94,229,255,.1); }
+      100% { box-shadow: 0 6px 28px rgba(0,0,0,.45), 0 0 22px rgba(94,229,255,.12), inset 0 0 22px rgba(94,229,255,.05); }
+    }
+    .flash { animation: flash .7s ease-out; }
+
+    /* ── Composition ── */
+    .comp-header {
+      display: grid;
+      grid-template-columns: 1fr 46px 1fr;
+      gap: 8px;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding-bottom: 7px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+
+    .comp-row {
+      display: grid;
+      grid-template-columns: 1fr 46px 1fr;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(94,229,255,.06);
+    }
+    .comp-row:last-child { border-bottom: none; }
+
+    .comp-name { font-size: 13px; font-weight: 600; }
+    .comp-prob { font-size: 12px; text-align: right; color: var(--muted); }
+
+    .bar-wrap { }
+    .bar-bg {
+      height: 5px;
+      background: rgba(94,229,255,.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width .45s ease;
+    }
+    .bar-range {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 3px;
+      letter-spacing: .2px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .leg-dot           { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .leg-dot.highest   { background: #E88AFF; }
+    .leg-dot.high      { background: #63E64C; }
+    .leg-dot.medium    { background: #E6E14C; }
+    .leg-dot.low       { background: #E69E4C; }
+
+    /* ── History ── */
+    .hist-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(94,229,255,.06);
+    }
+    .hist-item:last-child { border-bottom: none; }
+    .hist-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .hist-name { flex: 1; font-size: 13px; }
+    .hist-dep  { font-size: 11px; color: var(--accent); }
+    .hist-tier {
+      font-size: 10px;
       letter-spacing: 1px;
       text-transform: uppercase;
-      text-align: center;
-      box-shadow: inset 0 0 18px rgba(94, 229, 255, 0.1);
+      color: var(--muted);
+      min-width: 52px;
+      text-align: right;
     }
-
-    .hud-note {
-      margin-top: 14px;
+    .hist-time {
       font-size: 11px;
-      letter-spacing: 0.6px;
-      color: var(--hud-muted);
+      color: var(--muted);
+      font-family: 'Consolas', monospace;
+      min-width: 70px;
+      text-align: right;
+    }
+    .hist-empty {
+      font-size: 12px;
+      color: var(--muted);
       text-align: center;
+      padding: 10px 0;
+      letter-spacing: 1px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 14px;
-      font-size: 13px;
-      background: var(--hud-table-bg);
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid rgba(94, 229, 255, 0.2);
-      box-shadow: inset 0 0 22px rgba(94, 229, 255, 0.08);
-    }
-
-    th, td {
-      padding: 10px 8px;
-      text-align: center;
-      border-bottom: 1px solid rgba(94, 229, 255, 0.12);
-      border-right: 1px solid rgba(94, 229, 255, 0.08);
-    }
-
-    th:last-child, td:last-child {
-      border-right: none;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    th {
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
+    /* ── Status bar ── */
+    .status-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
       font-size: 11px;
-      background: linear-gradient(120deg, rgba(39, 120, 205, 0.55), rgba(12, 40, 72, 0.8));
-      color: var(--hud-text);
-      text-shadow: 0 0 8px rgba(94, 229, 255, 0.6);
+      color: var(--muted);
+      letter-spacing: .7px;
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
     }
 
-    td {
-      color: var(--hud-text);
+    .sdot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
     }
+    .sdot.green  { background: #63E64C; box-shadow: 0 0 6px #63E64C88; }
+    .sdot.amber  { background: #E69E4C; box-shadow: 0 0 6px #E69E4C88; }
+    .sdot.purple { background: #E88AFF; box-shadow: 0 0 6px #E88AFF88; }
+    .sdot.grey   { background: var(--muted); }
 
-    @media (max-width: 520px) {
-      .hud-container {
-        padding: 16px;
-      }
-
-      h1 {
-        font-size: 22px;
-      }
-
-      .hud-header {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .toggle-group {
-        align-self: flex-start;
-      }
+    @media (max-width: 400px) {
+      .ore-name   { font-size: 24px; }
+      .hdr-title  { font-size: 11px; letter-spacing: 2px; }
     }
-    </style>
+  </style>
 </head>
 <body>
-<div class="hud-wrap">
-  <div class="hud-container" id="box">
-    <div class="hud-header">
-      <div>
-        <h1 id="name">No code</h1>
-        <p id="code" class="hud-subtitle"></p>
-      </div>
-      <div class="toggle-group">
-        <label class="toggle-pill"><input type="radio" name="region" value="STANTON" checked><span>Stanton</span></label>
-        <label class="toggle-pill"><input type="radio" name="region" value="PYRO"><span>Pyro</span></label>
-      </div>
-    </div>
-    <p id="raw" class="hud-raw"></p>
-    <div class="legend">
-      <span style="background:#E88AFF;">Highest</span>
-      <span style="background:#63E64C;">High</span>
-      <span style="background:#E6E14C;">Medium</span>
-      <span style="background:#E69E4C;">Low</span>
-    </div>
-    <div id="minerals" class="hud-table"></div>
-    <p class="hud-note">Tip: open this overlay on another device (phone or tablet) using your local network link.</p>
+
+<div class="hdr">
+  <img src="/assets/BlightVeilBanner.png" alt="BlightVeil" class="hdr-banner">
+  <div class="toggle-group">
+    <label class="toggle-pill"><input type="radio" name="region" value="STANTON" checked><span>Stanton</span></label>
+    <label class="toggle-pill"><input type="radio" name="region" value="PYRO"><span>Pyro</span></label>
   </div>
 </div>
-<script>
-let region = "STANTON";
-document.querySelectorAll('input[name="region"]').forEach(el=>{
-  el.addEventListener("change", e=>{
-    region = e.target.value;
-    poll();
-  });
-});
 
-function renderTable(data){
-  if(!Array.isArray(data) || !data.length){
-    document.getElementById('minerals').innerHTML = '';
+<div class="scroll">
+  <div class="stack">
+
+    <!-- Current scan -->
+    <div class="card" id="scan-card">
+      <div class="card-label">Current Scan</div>
+      <div id="result-body">
+        <div class="waiting">
+          <div class="pulse-dot"></div>
+          <div class="ore-name empty">Awaiting scan…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mineral composition -->
+    <div class="card hidden" id="comp-card">
+      <div class="card-label">Mineral Composition</div>
+      <div id="comp-body"></div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot highest"></div>Highest</div>
+        <div class="leg-item"><div class="leg-dot high"></div>High</div>
+        <div class="leg-item"><div class="leg-dot medium"></div>Medium</div>
+        <div class="leg-item"><div class="leg-dot low"></div>Low</div>
+      </div>
+    </div>
+
+    <!-- Scan history -->
+    <div class="card">
+      <div class="card-label">Scan History</div>
+      <div id="hist-body"><div class="hist-empty">No scans yet</div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="status-bar">
+  <span id="align-lbl"><span class="sdot grey"></span>Alignment —</span>
+  <span id="time-lbl">Waiting…</span>
+</div>
+
+<script>
+const TIER_COLOR = { HIGHEST:'#E88AFF', HIGH:'#63E64C', MEDIUM:'#E6E14C', LOW:'#E69E4C', OTHER:'#5f8da8' };
+const RARITY_COLOR = { rare:'#E88AFF', uncommon:'#63E64C', common:'#5f8da8' };
+
+let region      = 'STANTON';
+let lastCode    = null;
+let lastScanTs  = null;
+let history     = [];   // { name, deposits, tier, color, time, category }
+
+document.querySelectorAll('input[name="region"]').forEach(el =>
+  el.addEventListener('change', e => { region = e.target.value; })
+);
+
+// ── Helpers ──────────────────────────────────────────────────
+function fmtTime(d) {
+  return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+
+function topTier(table) {
+  if (!table || !table.length) return null;
+  for (const t of ['HIGHEST','HIGH','MEDIUM','LOW'])
+    if (table.some(r => r.tier === t)) return t;
+  return 'OTHER';
+}
+
+// ── Render: current scan ─────────────────────────────────────
+function renderResult(j) {
+  const card = document.getElementById('scan-card');
+  const body = document.getElementById('result-body');
+  const info = j.info;
+
+  if (!info) {
+    card.classList.remove('active');
+    body.innerHTML = `<div class="waiting"><div class="pulse-dot"></div>
+      <div class="ore-name empty">Awaiting scan…</div></div>`;
     return;
   }
-  let html = '<table><tr><th>Mineral</th><th>Prob</th><th>Min</th><th>Max</th><th>Med</th></tr>';
-  for(const row of data){
-    html += `<tr>
-      <td style="color:${row.color}; font-weight:bold;">${row.name}</td>
-      <td>${row.prob}</td>
-      <td>${row.min}</td>
-      <td>${row.max}</td>
-      <td>${row.med}</td>
-    </tr>`;
+
+  const changed = j.code !== lastCode;
+  if (changed) {
+    lastCode   = j.code;
+    lastScanTs = Date.now();
+    pushHistory(info, j);
+    card.classList.add('flash');
+    card.addEventListener('animationend', () => card.classList.remove('flash'), { once: true });
   }
-  html += '</table>';
-  document.getElementById('minerals').innerHTML = html;
+
+  const tier      = topTier(j.table);
+  const tColor    = tier ? TIER_COLOR[tier] : '#5ee5ff';
+  const rColor    = RARITY_COLOR[info.rarity] || '#5f8da8';
+  const rLabel    = info.rarity ? info.rarity.charAt(0).toUpperCase() + info.rarity.slice(1) : '';
+  const depHtml   = (info.deposits > 0)
+    ? `<span class="tag deposits-badge">×${info.deposits} deposits</span>` : '';
+  const tierHtml  = (tier && tier !== 'OTHER')
+    ? `<span class="tier-badge" style="background:${tColor}">${tier}</span>` : '';
+
+  card.classList.add('active');
+  body.innerHTML = `
+    <div class="result-top">
+      <div class="ore-name" style="color:${tColor};text-shadow:0 0 22px ${tColor}55">${info.name}</div>
+      ${tierHtml}
+    </div>
+    <div class="tags">
+      ${depHtml}
+      <span class="tag">${info.category || 'Ore'}</span>
+      <span class="tag highlight" style="color:${rColor};border-color:${rColor}44">${rLabel}</span>
+    </div>
+    <div class="code-line">Code: ${j.code || '—'} &nbsp;·&nbsp; Base: ${info.base_code || '—'}</div>`;
 }
 
-function showEmptyState(category){
-  const message = category && category.toLowerCase().includes('salvage')
-    ? 'No mineral composition available for salvage targets.'
-    : '';
-  document.getElementById('minerals').innerHTML = message
-    ? `<div class="hud-empty">${message}</div>`
-    : '';
+// ── Render: composition ──────────────────────────────────────
+function renderComposition(table) {
+  const card = document.getElementById('comp-card');
+  const body = document.getElementById('comp-body');
+
+  if (!table || !table.length) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+
+  const maxP = table.reduce((m, r) => Math.max(m, parseInt(r.prob) || 0), 1);
+
+  let html = `<div class="comp-header"><div>Mineral</div><div style="text-align:right">Prob</div><div>Content</div></div>`;
+  for (const row of table) {
+    const pct  = Math.round((parseInt(row.prob) || 0) / maxP * 100);
+    const col  = row.color || TIER_COLOR.OTHER;
+    html += `<div class="comp-row">
+      <div class="comp-name" style="color:${col}">${row.name}</div>
+      <div class="comp-prob">${row.prob}</div>
+      <div class="bar-wrap">
+        <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
+        <div class="bar-range">${row.min} – ${row.max} &nbsp;(med ${row.med})</div>
+      </div>
+    </div>`;
+  }
+  body.innerHTML = html;
 }
 
-async function poll(){
+// ── Render: history ──────────────────────────────────────────
+function pushHistory(info, j) {
+  const tier  = topTier(j.table);
+  const color = tier ? TIER_COLOR[tier] : '#5ee5ff';
+  history.unshift({ name: info.name, deposits: info.deposits, tier, color,
+                    category: info.category, time: new Date() });
+  if (history.length > 8) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const body = document.getElementById('hist-body');
+  if (!history.length) { body.innerHTML = '<div class="hist-empty">No scans yet</div>'; return; }
+  let html = '';
+  for (const h of history) {
+    const dep   = (h.deposits > 0) ? `<span class="hist-dep">×${h.deposits}</span>` : '';
+    const tText = h.tier && h.tier !== 'OTHER' ? h.tier : (h.category || '—');
+    html += `<div class="hist-item">
+      <div class="hist-dot" style="background:${h.color};box-shadow:0 0 6px ${h.color}88"></div>
+      <span class="hist-name">${h.name}</span>
+      ${dep}
+      <span class="hist-tier">${tText}</span>
+      <span class="hist-time">${fmtTime(h.time)}</span>
+    </div>`;
+  }
+  body.innerHTML = html;
+}
+
+// ── Render: alignment status ─────────────────────────────────
+function renderAlignment(al) {
+  const el = document.getElementById('align-lbl');
+  if (!al)            { el.innerHTML = `<span class="sdot grey"></span>Alignment —`; return; }
+  if (!al.enabled)    { el.innerHTML = `<span class="sdot grey"></span>Alignment off`; return; }
+  if (al.matched) {
+    const s = al.score ? (al.score * 100).toFixed(0) + '%' : '';
+    el.innerHTML = `<span class="sdot green"></span>Locked ${s}`;
+  } else {
+    el.innerHTML = `<span class="sdot amber"></span>Searching…`;
+  }
+}
+
+// ── "Last scan" ticker ───────────────────────────────────────
+function tickTime() {
+  const el = document.getElementById('time-lbl');
+  if (!lastScanTs) { el.textContent = 'No scan yet'; return; }
+  const s = Math.floor((Date.now() - lastScanTs) / 1000);
+  el.textContent = s < 4 ? 'Just now' : `${s}s ago`;
+}
+
+// ── Poll ─────────────────────────────────────────────────────
+async function poll() {
   try {
-    const r = await fetch('/status?region='+region);
+    const r = await fetch('/status?region=' + region);
     const j = await r.json();
-    if(j.info){
-      let text = j.info.name;
-      if(j.info.deposits){ text += " x" + j.info.deposits; }
-      document.getElementById('name').textContent = text;
-      document.getElementById('code').textContent = "Code: " + (j.code ?? "");
-      document.getElementById('raw').textContent = j.code_raw ? ("(raw: " + j.code_raw + ", conf " + j.confidence.toFixed(2) + ")") : "";
-      const info = j.info || {};
-      const category = info.category || '';
-      if(Array.isArray(j.table) && j.table.length){
-        renderTable(j.table);
-      } else {
-        showEmptyState(category);
-      }
-    }
-  } catch(e){ console.error(e); }
+    renderResult(j);
+    renderComposition(j.table);
+    renderAlignment(j.alignment);
+    if (j.info) lastScanTs = lastScanTs || Date.now();
+  } catch(e) { console.error(e); }
   setTimeout(poll, 500);
 }
+
+setInterval(tickTime, 1000);
 poll();
 </script>
 </body>

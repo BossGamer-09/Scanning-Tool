@@ -55,6 +55,22 @@ file_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
+# Redirect Flask/Werkzeug access logs to a separate file so they don't
+# clutter the main console or scanning_tool.log.
+_access_file_handler = logging.handlers.RotatingFileHandler(
+    'flask_access.log',
+    maxBytes=5*1024*1024,  # 5MB
+    backupCount=3
+)
+_access_file_handler.setLevel(logging.INFO)
+_access_file_handler.setFormatter(logging.Formatter('%(message)s'))
+
+_werkzeug_logger = logging.getLogger('werkzeug')
+_werkzeug_logger.setLevel(logging.INFO)
+_werkzeug_logger.handlers.clear()
+_werkzeug_logger.addHandler(_access_file_handler)
+_werkzeug_logger.propagate = False
+
 
 ScaleWidget = Union[tk.Scale, ttk.Scale]
 
@@ -788,6 +804,11 @@ def sync_anchor_sliders() -> None:
         finally:
             state["syncing"]["anchor"] = False
 
+    try:
+        widget.after(0, _apply)
+    except tk.TclError:
+        pass
+
 
 def sync_overlay_sliders() -> None:
     state = GUI_CONTROL_STATE
@@ -1005,31 +1026,90 @@ with open(rock_file, "r") as f:
 
 # ---------- Multiplier Codes ----------
 MULTIPLIER_CODES = {
-    1700: {"key": "CTYPE", "display_name": "C-Type", "rarity": "common", "category": "Rock Deposits"},
-    1900: {"key": "ETYPE", "display_name": "E-Type", "rarity": "common", "category": "Rock Deposits"},
-    1660: {"key": "ITYPE", "display_name": "I-Type", "rarity": "common", "category": "Rock Deposits"},
-    1850: {"key": "MTYPE", "display_name": "M-Type", "rarity": "common", "category": "Rock Deposits"},
-    1750: {"key": "PTYPE", "display_name": "P-Type", "rarity": "common", "category": "Rock Deposits"},
-    1870: {"key": "QTYPE", "display_name": "Q-Type", "rarity": "common", "category": "Rock Deposits"},
-    1720: {"key": "STYPE", "display_name": "S-Type", "rarity": "common", "category": "Rock Deposits"},
-    1800: {"key": "ATACAMITE", "display_name": "Atacamite", "rarity": "common", "category": "Rock Deposits"},
-    1770: {"key": "FELSIC", "display_name": "Felsic", "rarity": "common", "category": "Rock Deposits"},
-    1840: {"key": "GNEISS", "display_name": "Gneiss", "rarity": "common", "category": "Rock Deposits"},
-    1920: {"key": "GRANITE", "display_name": "Granite", "rarity": "common", "category": "Rock Deposits"},
-    1950: {"key": "IGNEOUS", "display_name": "Igneous", "rarity": "common", "category": "Rock Deposits"},
-    1790: {"key": "OBSIDIAN", "display_name": "Obsidian", "rarity": "common", "category": "Rock Deposits"},
-    1820: {"key": "QUARTZITE", "display_name": "Quartzite", "rarity": "common", "category": "Rock Deposits"},
-    1730: {"key": "SHALE", "display_name": "Shale", "rarity": "common", "category": "Rock Deposits"},
-    620: {"key": "GEMS", "display_name": "Gems", "rarity": "common", "category": "Gems"},
-    2000: {"key": "SALVAGE", "display_name": "Metal Panels", "rarity": "common", "category": "Salvage"},
+    # ── Legacy deposit-type codes (pre-4.7, unchanged) ───────
+    620:  {"key": "GEMS",          "display_name": "Gems",          "rarity": "common",   "category": "Gems"},
+    1660: {"key": "ITYPE",         "display_name": "I-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1700: {"key": "CTYPE",         "display_name": "C-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1720: {"key": "STYPE",         "display_name": "S-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1730: {"key": "SHALE",         "display_name": "Shale",         "rarity": "common",   "category": "Rock Deposits"},
+    1750: {"key": "PTYPE",         "display_name": "P-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1770: {"key": "FELSIC",        "display_name": "Felsic",        "rarity": "common",   "category": "Rock Deposits"},
+    1790: {"key": "OBSIDIAN",      "display_name": "Obsidian",      "rarity": "common",   "category": "Rock Deposits"},
+    1800: {"key": "ATACAMITE",     "display_name": "Atacamite",     "rarity": "common",   "category": "Rock Deposits"},
+    1820: {"key": "QUARTZITE",     "display_name": "Quartzite",     "rarity": "common",   "category": "Rock Deposits"},
+    1840: {"key": "GNEISS",        "display_name": "Gneiss",        "rarity": "common",   "category": "Rock Deposits"},
+    1850: {"key": "MTYPE",         "display_name": "M-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1870: {"key": "QTYPE",         "display_name": "Q-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1900: {"key": "ETYPE",         "display_name": "E-Type",        "rarity": "common",   "category": "Rock Deposits"},
+    1920: {"key": "GRANITE",       "display_name": "Granite",       "rarity": "common",   "category": "Rock Deposits"},
+    1950: {"key": "IGNEOUS",       "display_name": "Igneous",       "rarity": "common",   "category": "Rock Deposits"},
+    2000: {"key": "SALVAGE",       "display_name": "Metal Panels",  "rarity": "common",   "category": "Salvage"},
+
+    # ── 4.7 Ore RS base codes (live, corrected from PTU image) ──
+    # HIGHEST tier (lowest RS = rarest / most valuable)
+    3170: {"key": "QUANTANIUM",    "display_name": "Quantanium",   "rarity": "rare",     "category": "Ore"},
+    3185: {"key": "STILERON",      "display_name": "Stileron",     "rarity": "rare",     "category": "Ore"},  # ✓ confirmed
+    3200: {"key": "SAVRILIUM",     "display_name": "Savrilium",    "rarity": "rare",     "category": "Ore"},
+    3370: {"key": "OURATITE",      "display_name": "Ouratite",     "rarity": "rare",     "category": "Ore"},
+    3385: {"key": "RICCITE",       "display_name": "Riccite",      "rarity": "rare",     "category": "Ore"},
+    3400: {"key": "LINDINIUM",     "display_name": "Lindinium",    "rarity": "rare",     "category": "Ore"},
+    # HIGH tier
+    3540: {"key": "BERYL",         "display_name": "Beryl",        "rarity": "uncommon", "category": "Ore"},
+    3555: {"key": "TARANITE",      "display_name": "Taranite",     "rarity": "uncommon", "category": "Ore"},
+    3570: {"key": "BORASE",        "display_name": "Borase",       "rarity": "uncommon", "category": "Ore"},
+    3585: {"key": "GOLD",          "display_name": "Gold",         "rarity": "uncommon", "category": "Ore"},
+    4125: {"key": "BEXALITE",      "display_name": "Bexalite",     "rarity": "uncommon", "category": "Ore"},  # ✓ confirmed (PTU image wrongly showed 3600)
+    # MEDIUM tier
+    3825: {"key": "LARANITE",      "display_name": "Laranite",     "rarity": "common",   "category": "Ore"},
+    3840: {"key": "ASLARITE",      "display_name": "Aslarite",     "rarity": "common",   "category": "Ore"},
+    3855: {"key": "TITANIUM",      "display_name": "Titanium",     "rarity": "common",   "category": "Ore"},
+    3870: {"key": "TUNGSTEN",      "display_name": "Tungsten",     "rarity": "common",   "category": "Ore"},
+    3885: {"key": "AGRICIUM",      "display_name": "Agricium",     "rarity": "common",   "category": "Ore"},
+    3900: {"key": "TORITE",        "display_name": "Torite",       "rarity": "common",   "category": "Ore"},
+    4175: {"key": "HEPHAESTANITE", "display_name": "Hephaestanite","rarity": "common",   "category": "Ore"},  # ✓ confirmed (PTU image wrongly showed 4180)
+    # LOW tier
+    4195: {"key": "TIN",           "display_name": "Tin",          "rarity": "common",   "category": "Ore"},  # ✓ confirmed
+    4210: {"key": "QUARTZ",        "display_name": "Quartz",       "rarity": "common",   "category": "Ore"},
+    4225: {"key": "CORUNDUM",      "display_name": "Corundum",     "rarity": "common",   "category": "Ore"},
+    4240: {"key": "COPPER",        "display_name": "Copper",       "rarity": "common",   "category": "Ore"},
+    4255: {"key": "SILICON",       "display_name": "Silicon",      "rarity": "common",   "category": "Ore"},
+    4270: {"key": "IRON",          "display_name": "Iron",         "rarity": "common",   "category": "Ore"},
+    4285: {"key": "ALUMINIUM",     "display_name": "Aluminium",    "rarity": "common",   "category": "Ore"},
+    4300: {"key": "ICE",           "display_name": "Ice",          "rarity": "common",   "category": "Ore"},  # ✓ confirmed
 }
+
 
 # ---------- Ore Value Tiers ----------
 ORE_TIERS = {
-    "HIGHEST": {"ores": ["QUANTANIUM", "STILERON", "RICCITE"], "color": "#E88AFF"},
-    "HIGH": {"ores": ["TARANITE", "BEXALITE", "GOLD"], "color": "#63E64C"},
-    "MEDIUM": {"ores": ["LARANITE", "BORASE", "BERYL", "AGRICIUM", "HEPHAESTANITE"], "color": "#E6E14C"},
-    "LOW": {"ores": ["TUNGSTEN", "TITANIUM", "SILICON", "IRON", "QUARTZ", "CORUNDUM", "COPPER", "TIN", "ALUMINUM", "ICE"], "color": "#E69E4C"},
+    "HIGHEST": {
+        "ores": [
+            "QUANTANIUM", "STILERON", "RICCITE",       # pre-4.7
+            "SAVRILIUM", "OURATITE", "LINDINIUM",       # 4.7 new
+        ],
+        "color": "#E88AFF",
+    },
+    "HIGH": {
+        "ores": [
+            "TARANITE", "BEXALITE", "GOLD",             # pre-4.7
+            "BERYL", "BORASE",                          # 4.7: promoted from MEDIUM (RS 3540-3570)
+        ],
+        "color": "#63E64C",
+    },
+    "MEDIUM": {
+        "ores": [
+            "LARANITE", "AGRICIUM", "HEPHAESTANITE",    # pre-4.7 (BERYL+BORASE promoted to HIGH)
+            "ASLARITE", "TORITE",                       # 4.7 new
+        ],
+        "color": "#E6E14C",
+    },
+    "LOW": {
+        "ores": [
+            "TUNGSTEN", "TITANIUM", "SILICON", "IRON",
+            "QUARTZ", "CORUNDUM", "COPPER", "TIN",
+            "ALUMINUM", "ALUMINIUM", "ICE",             # both spellings for compat
+        ],
+        "color": "#E69E4C",
+    },
 }
 ORE_VALUE_MAP = {}
 for tier, data in ORE_TIERS.items():
@@ -1115,20 +1195,41 @@ def lookup_deposit(code: str):
         if not m:
             return None
         num_code = int(m.group(1))
+
+        # 0 % anything == 0 in Python, so a code of all-zeros would falsely
+        # match every base. The smallest real base code is 620, so any value
+        # below that can never be a valid scan result.
+        if num_code < 620:
+            return None
+
+        best_base = None
+        best_info = None
+
         for base_code, info in MULTIPLIER_CODES.items():
             if num_code % base_code == 0:
-                deposits = num_code // base_code
-                return {
-                    "name": info["display_name"],
-                    "key": info["key"],
-                    "rarity": info["rarity"],
-                    "base_code": base_code,
-                    "deposits": deposits,
-                    "category": info.get("category", "Ore")
-                }
+                # Prefer the largest base that divides evenly.
+                # This ensures 4.7 ore codes (3000+) win over legacy
+                # deposit codes (620-2000) when both happen to divide
+                # the same scan value.
+                if best_base is None or base_code > best_base:
+                    best_base = base_code
+                    best_info = info
+
+        if best_base is None:
+            return None
+
+        deposits = num_code // best_base
+        return {
+            "name": best_info["display_name"],
+            "key":  best_info["key"],
+            "rarity": best_info["rarity"],
+            "base_code": best_base,
+            "deposits": deposits,
+            "category": best_info.get("category", "Ore"),
+        }
+
     except ValueError:
-        pass
-    return None
+        return None
 
 
 # ---------- Capture / Overlay ----------
@@ -1921,6 +2022,7 @@ def launch_gui():
 
     root = tk.Tk()
     root.title("Star Citizen Scanner Control")
+    root.minsize(460, 400)
     root.protocol("WM_DELETE_WINDOW", on_close)
 
     colors = apply_glass_theme(root)
@@ -2169,6 +2271,12 @@ def launch_gui():
     )
     sync_anchor_sliders()
 
+    anchor_btn_row = ttk.Frame(frm_anchor, style="Glass.Section.TFrame")
+    anchor_btn_row.pack(fill="x", padx=5, pady=5)
+    ttk.Button(anchor_btn_row, text="Reload Templates", command=reload_anchor_templates, style="Glass.TButton").pack(side="left", padx=5)
+    ttk.Button(anchor_btn_row, text="Realign Now", command=manual_realign, style="Glass.TButton").pack(side="left", padx=5)
+    ttk.Button(anchor_btn_row, text="Open Template Folder", command=open_anchor_directory, style="Glass.TButton").pack(side="left", padx=5)
+
     frm_network = ttk.LabelFrame(main, text="Ollama Connection", style="Glass.TLabelframe")
     frm_network.pack(fill="x", padx=5, pady=8)
     ttk.Label(
@@ -2207,12 +2315,6 @@ def launch_gui():
         style="Glass.Small.TLabel",
         justify="left",
     ).pack(fill="x", padx=5, pady=(0, 5))
-
-    anchor_btn_row = ttk.Frame(frm_anchor, style="Glass.Section.TFrame")
-    anchor_btn_row.pack(fill="x", padx=5, pady=5)
-    ttk.Button(anchor_btn_row, text="Reload Templates", command=reload_anchor_templates, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(anchor_btn_row, text="Realign Now", command=manual_realign, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(anchor_btn_row, text="Open Template Folder", command=open_anchor_directory, style="Glass.TButton").pack(side="left", padx=5)
 
     frm_display = ttk.LabelFrame(main, text="Result Display", style="Glass.TLabelframe")
     frm_display.pack(fill="x", padx=5, pady=8)
@@ -2260,15 +2362,36 @@ def launch_gui():
     style_spinbox(capture_interval_spin, colors)
     capture_interval_var.trace_add("write", update_capture_interval)
 
-    button_row = ttk.Frame(frm_ctrl, style="Glass.Section.TFrame")
-    button_row.pack(fill="x", padx=5, pady=(0, 5))
+    button_row1 = ttk.Frame(frm_ctrl, style="Glass.Section.TFrame")
+    button_row1.pack(fill="x", padx=5, pady=(0, 4))
 
-    ttk.Button(button_row, text="Single Scan", command=capture_once, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(button_row, text="Loop Toggle", command=toggle_continuous, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(button_row, text="Update Overlay", command=update_overlay_region, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(button_row, text="Set Label Color", command=choose_label_color, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(button_row, text="Save Config", command=save_config, style="Glass.TButton").pack(side="left", padx=5)
-    ttk.Button(button_row, text="Toggle Border", command=toggle_border, style="Glass.TButton").pack(side="left", padx=5)
+    loop_btn_var = tk.StringVar(value="Start Loop")
+
+    def _toggle_continuous_ui():
+        toggle_continuous()
+        if continuous_mode:
+            loop_btn_var.set("Stop Loop")
+            status_var.set("Continuous scan started.")
+        else:
+            loop_btn_var.set("Start Loop")
+            status_var.set("Continuous scan stopped.")
+
+    ttk.Button(button_row1, text="Single Scan", command=capture_once, style="Glass.TButton").pack(side="left", padx=5)
+    ttk.Button(button_row1, textvariable=loop_btn_var, command=_toggle_continuous_ui, style="Glass.TButton").pack(side="left", padx=5)
+    ttk.Button(button_row1, text="Update Overlay", command=update_overlay_region, style="Glass.TButton").pack(side="left", padx=5)
+
+    button_row2 = ttk.Frame(frm_ctrl, style="Glass.Section.TFrame")
+    button_row2.pack(fill="x", padx=5, pady=(0, 5))
+
+    ttk.Button(button_row2, text="Set Label Color", command=choose_label_color, style="Glass.TButton").pack(side="left", padx=5)
+    ttk.Button(button_row2, text="Save Config", command=save_config, style="Glass.TButton").pack(side="left", padx=5)
+    ttk.Button(button_row2, text="Toggle Border", command=toggle_border, style="Glass.TButton").pack(side="left", padx=5)
+
+    ttk.Label(
+        frm_ctrl,
+        text="Hotkeys:  [7] Single scan   [Ctrl+7] Loop toggle   [8] Toggle border",
+        style="Glass.Small.TLabel",
+    ).pack(anchor="w", padx=5, pady=(0, 5))
 
     ttk.Label(main, textvariable=status_var, anchor="w", justify="left", style="Glass.Status.TLabel").pack(
         fill="x", padx=5, pady=(8, 0)
@@ -2304,9 +2427,24 @@ def capture_once():
     code, raw = extract_code_from_text(raw_text)
     info = lookup_deposit(code)
 
-    last_result = {"code": code, "code_raw": raw, "info": info, "raw_text": raw_text}
+    new_result = {"code": code, "code_raw": raw, "info": info, "confidence": 0.0, "raw_text": raw_text}
+
+    prev_code = last_result.get("code") if isinstance(last_result, dict) else None
+    result_changed = code != prev_code
+
+    last_result = new_result
     update_overlay_label(info, code=code, raw_text=raw or raw_text)
-    logger.info(f"Scan result: {last_result}")
+
+    if info:
+        # Known deposit — always log at INFO when it changes, once if repeated.
+        if result_changed:
+            logger.info("Deposit identified: %s (code %s)", info.get("name"), code)
+    elif result_changed:
+        # Unknown or empty — demote to DEBUG so the log stays quiet.
+        if code:
+            logger.debug("Unrecognised code: %s (raw: %s)", code, raw_text)
+        else:
+            logger.debug("No code detected (raw: %s)", raw_text or "<empty>")
 
 
 def toggle_continuous():
@@ -2343,7 +2481,8 @@ def get_local_ip() -> str:
 
 # ---------- Flask / Hotkeys ----------
 template_folder = resource_path("templates")
-app = Flask(__name__, template_folder=template_folder)
+assets_folder = resource_path("assets")
+app = Flask(__name__, template_folder=template_folder, static_folder=assets_folder, static_url_path="/assets")
 
 @app.route("/")
 def index():

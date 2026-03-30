@@ -1,15 +1,15 @@
 {
     "CAP_REGION": {
-        "left": 1146,
-        "top": 277,
+        "left": 1431,
+        "top": 459,
         "width": 185,
         "height": 30
     },
-    "label_color": "#4bf569",
-    "AUTO_ALIGN_ENABLED": true,
+    "label_color": "#00ff00",
+    "AUTO_ALIGN_ENABLED": false,
     "ANCHOR_REGION": {
-        "left": 1100,
-        "top": 240,
+        "left": 1374,
+        "top": 403,
         "width": 320,
         "height": 140
     },
