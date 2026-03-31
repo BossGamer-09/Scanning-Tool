@@ -482,7 +482,7 @@ def ensure_ollama_running() -> None:
 
     sys.exit("Unable to reach a local Ollama service. Please start 'ollama serve' and rerun.")
 
-def ensure_model_installed(model="moondream2"):
+def ensure_model_installed(model="moondream"):
     """Ensure the Ollama model exists on the configured host."""
 
     host = get_ollama_host()
@@ -539,7 +539,7 @@ INFO_OVERLAY_OFFSET = {"x": 0, "y": 0}
 label_color = "yellow"
 MIN_CONFIDENCE = 0.65
 DEBUG_SHOW_OVERLAY = True
-OLLAMA_MODEL = "moondream2"   # vision model — lightweight, fast digit reader
+OLLAMA_MODEL = "moondream"   # vision model — lightweight, fast digit reader
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 CONFIGURED_OLLAMA_HOST = ""
 
@@ -2590,7 +2590,7 @@ if __name__ == "__main__":
     # Ensure Ollama + model before starting
     ensure_ollama_installed()
     ensure_ollama_running()
-    ensure_model_installed("moondream2")
+    ensure_model_installed("moondream")
 
     anchor_tracker = AnchorRegionTracker(ANCHOR_TEMPLATE_DIR, ANCHOR_THRESHOLD)
     Thread(target=hotkey_listener, daemon=True).start()
