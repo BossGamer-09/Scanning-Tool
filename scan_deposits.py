@@ -697,6 +697,9 @@ CODE_RE = re.compile(
 
 last_result = {"code": None, "code_raw": None, "info": None,
                "confidence": 0.0, "raw_text": ""}
+# Confirmation buffer: a code must appear on 2 consecutive scans before it is
+# reported.  This filters single-frame hallucinations from the AI model.
+_pending = {"code": None, "count": 0}
 last_alignment_info = {
     "enabled": AUTO_ALIGN_ENABLED,
     "matched": False,
@@ -1045,10 +1048,10 @@ MULTIPLIER_CODES = {
     1950: {"key": "IGNEOUS",       "display_name": "Igneous",       "rarity": "common",   "category": "Rock Deposits"},
     2000: {"key": "SALVAGE",       "display_name": "Metal Panels",  "rarity": "common",   "category": "Salvage"},
 
-    # ── 4.7 Ore RS base codes (live, corrected from PTU image) ──
+    # ── 4.7 Ore RS base codes — verified against 4.7.0-PTU-11414557 (@MrKraken) ──
     # HIGHEST tier (lowest RS = rarest / most valuable)
     3170: {"key": "QUANTANIUM",    "display_name": "Quantanium",   "rarity": "rare",     "category": "Ore"},
-    3185: {"key": "STILERON",      "display_name": "Stileron",     "rarity": "rare",     "category": "Ore"},  # ✓ confirmed
+    3185: {"key": "STILERON",      "display_name": "Stileron",     "rarity": "rare",     "category": "Ore"},
     3200: {"key": "SAVRILIUM",     "display_name": "Savrilium",    "rarity": "rare",     "category": "Ore"},
     3370: {"key": "OURATITE",      "display_name": "Ouratite",     "rarity": "rare",     "category": "Ore"},
     3385: {"key": "RICCITE",       "display_name": "Riccite",      "rarity": "rare",     "category": "Ore"},
@@ -1058,7 +1061,7 @@ MULTIPLIER_CODES = {
     3555: {"key": "TARANITE",      "display_name": "Taranite",     "rarity": "uncommon", "category": "Ore"},
     3570: {"key": "BORASE",        "display_name": "Borase",       "rarity": "uncommon", "category": "Ore"},
     3585: {"key": "GOLD",          "display_name": "Gold",         "rarity": "uncommon", "category": "Ore"},
-    4125: {"key": "BEXALITE",      "display_name": "Bexalite",     "rarity": "uncommon", "category": "Ore"},  # ✓ confirmed (PTU image wrongly showed 3600)
+    3600: {"key": "BEXALITE",      "display_name": "Bexalite",     "rarity": "uncommon", "category": "Ore"},
     # MEDIUM tier
     3825: {"key": "LARANITE",      "display_name": "Laranite",     "rarity": "common",   "category": "Ore"},
     3840: {"key": "ASLARITE",      "display_name": "Aslarite",     "rarity": "common",   "category": "Ore"},
@@ -1068,7 +1071,7 @@ MULTIPLIER_CODES = {
     3900: {"key": "TORITE",        "display_name": "Torite",       "rarity": "common",   "category": "Ore"},
     4175: {"key": "HEPHAESTANITE", "display_name": "Hephaestanite","rarity": "common",   "category": "Ore"},  # ✓ confirmed (PTU image wrongly showed 4180)
     # LOW tier
-    4195: {"key": "TIN",           "display_name": "Tin",          "rarity": "common",   "category": "Ore"},  # ✓ confirmed
+    4195: {"key": "TIN",           "display_name": "Tin",          "rarity": "common",   "category": "Ore"},
     4210: {"key": "QUARTZ",        "display_name": "Quartz",       "rarity": "common",   "category": "Ore"},
     4225: {"key": "CORUNDUM",      "display_name": "Corundum",     "rarity": "common",   "category": "Ore"},
     4240: {"key": "COPPER",        "display_name": "Copper",       "rarity": "common",   "category": "Ore"},
@@ -1156,7 +1159,12 @@ def ocr_with_ollama(pil_img: Image.Image, model=OLLAMA_MODEL) -> str:
             model=model,
             messages=[{
                 "role": "user",
-                "content": "Extract the numeric code shown in this image. Only return the code, no extra words.",
+                "content": (
+                    "This is a cropped screenshot from the Star Citizen game HUD. "
+                    "It may contain a 3-6 digit numeric scan signature code. "
+                    "If you can see a clear numeric code, reply with ONLY that number and nothing else. "
+                    "If the image is blank, blurry, or contains no clear numeric code, reply with exactly: NONE"
+                ),
                 "images": [img_bytes],
             }],
         )
@@ -1169,6 +1177,11 @@ def ocr_with_ollama(pil_img: Image.Image, model=OLLAMA_MODEL) -> str:
 def extract_code_from_text(raw_text: str):
     if not raw_text:
         return None, None
+
+    # Model was instructed to reply "NONE" when no code is visible.
+    if re.fullmatch(r"none\.?", raw_text.strip(), re.IGNORECASE):
+        return None, None
+
     matches = CODE_RE.findall(raw_text)
     if not matches:
         return None, raw_text
@@ -1183,6 +1196,14 @@ def extract_code_from_text(raw_text: str):
             candidate = raw.replace(",", "").replace(".", "")
     else:
         candidate = raw
+
+    # Reject digit strings that are too long to be a valid scan code.
+    # Max real code: base 4300 × ~13 cluster max ≈ 56 000 (5 digits).
+    # 6-digit codes (≥100 000) are always AI hallucinations (extra zeros).
+    digit_part = re.sub(r"[^0-9]", "", candidate)
+    if len(digit_part) > 5:
+        return None, raw
+
     return candidate, raw
 
 
@@ -1202,20 +1223,31 @@ def lookup_deposit(code: str):
         if num_code < 620:
             return None
 
-        best_base = None
-        best_info = None
+        # Split candidates into 4.7 ore codes (base >= 3000) and legacy
+        # deposit codes (base < 3000) so each group can use the right
+        # tie-breaking rule.
+        ore_47: List[Tuple[int, dict]] = []
+        legacy:  List[Tuple[int, dict]] = []
 
         for base_code, info in MULTIPLIER_CODES.items():
             if num_code % base_code == 0:
-                # Prefer the largest base that divides evenly.
-                # This ensures 4.7 ore codes (3000+) win over legacy
-                # deposit codes (620-2000) when both happen to divide
-                # the same scan value.
-                if best_base is None or base_code > best_base:
-                    best_base = base_code
-                    best_info = info
+                if base_code >= 3000:
+                    ore_47.append((base_code, info))
+                else:
+                    legacy.append((base_code, info))
 
-        if best_base is None:
+        if ore_47:
+            # Within 4.7 ores, prefer the SMALLEST base (rarest ore / most
+            # deposits).  "Largest base wins" causes wrong results at high
+            # deposit counts: e.g. SAVRILIUM×6 (19200) = ASLARITE×5 (19200).
+            # Picking the rarest ore avoids missing a valuable find.
+            best_base, best_info = min(ore_47, key=lambda x: x[0])
+        elif legacy:
+            # Legacy deposit codes: prefer the largest base so that a
+            # 4.7-era value which is also divisible by a small legacy code
+            # (e.g. 620) doesn't get swallowed by GEMS.
+            best_base, best_info = max(legacy, key=lambda x: x[0])
+        else:
             return None
 
         deposits = num_code // best_base
@@ -2427,24 +2459,38 @@ def capture_once():
     code, raw = extract_code_from_text(raw_text)
     info = lookup_deposit(code)
 
+    # ── Confirmation filter ───────────────────────────────────────────────────
+    # Require the same code on 2 consecutive scans before treating it as real.
+    # This eliminates single-frame AI hallucinations without delaying genuine
+    # results (a real HUD code stays visible for multiple frames).
+    if code == _pending["code"]:
+        _pending["count"] += 1
+    else:
+        _pending["code"] = code
+        _pending["count"] = 1
+
+    confirmed = _pending["count"] >= 2
+    # ─────────────────────────────────────────────────────────────────────────
+
     new_result = {"code": code, "code_raw": raw, "info": info, "confidence": 0.0, "raw_text": raw_text}
 
     prev_code = last_result.get("code") if isinstance(last_result, dict) else None
-    result_changed = code != prev_code
+    result_changed = confirmed and (code != prev_code)
 
-    last_result = new_result
-    update_overlay_label(info, code=code, raw_text=raw or raw_text)
+    if confirmed:
+        last_result = new_result
+        update_overlay_label(info, code=code, raw_text=raw or raw_text)
+    elif code is None:
+        # Always clear the overlay immediately when nothing is detected.
+        last_result = new_result
+        update_overlay_label(None)
 
-    if info:
-        # Known deposit — always log at INFO when it changes, once if repeated.
-        if result_changed:
-            logger.info("Deposit identified: %s (code %s)", info.get("name"), code)
-    elif result_changed:
-        # Unknown or empty — demote to DEBUG so the log stays quiet.
-        if code:
-            logger.debug("Unrecognised code: %s (raw: %s)", code, raw_text)
-        else:
-            logger.debug("No code detected (raw: %s)", raw_text or "<empty>")
+    if info and result_changed:
+        logger.info("Deposit identified: %s (code %s)", info.get("name"), code)
+    elif result_changed and code:
+        logger.debug("Unrecognised code: %s (raw: %s)", code, raw_text)
+    elif not code and (prev_code is not None):
+        logger.debug("No code detected (raw: %s)", raw_text or "<empty>")
 
 
 def toggle_continuous():
