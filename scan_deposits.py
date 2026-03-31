@@ -482,7 +482,7 @@ def ensure_ollama_running() -> None:
 
     sys.exit("Unable to reach a local Ollama service. Please start 'ollama serve' and rerun.")
 
-def ensure_model_installed(model="qwen2.5vl:3b"):
+def ensure_model_installed(model="moondream2"):
     """Ensure the Ollama model exists on the configured host."""
 
     host = get_ollama_host()
@@ -539,7 +539,7 @@ INFO_OVERLAY_OFFSET = {"x": 0, "y": 0}
 label_color = "yellow"
 MIN_CONFIDENCE = 0.65
 DEBUG_SHOW_OVERLAY = True
-OLLAMA_MODEL = "qwen2.5vl:3b"   # vision model
+OLLAMA_MODEL = "moondream2"   # vision model — lightweight, fast digit reader
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 CONFIGURED_OLLAMA_HOST = ""
 
@@ -1160,10 +1160,9 @@ def ocr_with_ollama(pil_img: Image.Image, model=OLLAMA_MODEL) -> str:
             messages=[{
                 "role": "user",
                 "content": (
-                    "This is a cropped screenshot from the Star Citizen game HUD. "
-                    "It may contain a 3-6 digit numeric scan signature code. "
-                    "If you can see a clear numeric code, reply with ONLY that number and nothing else. "
-                    "If the image is blank, blurry, or contains no clear numeric code, reply with exactly: NONE"
+                    "What number is shown in this image? "
+                    "Reply with ONLY the digits and nothing else. "
+                    "If no number is visible, reply with exactly: NONE"
                 ),
                 "images": [img_bytes],
             }],
@@ -2591,7 +2590,7 @@ if __name__ == "__main__":
     # Ensure Ollama + model before starting
     ensure_ollama_installed()
     ensure_ollama_running()
-    ensure_model_installed("qwen2.5vl:3b")
+    ensure_model_installed("moondream2")
 
     anchor_tracker = AnchorRegionTracker(ANCHOR_TEMPLATE_DIR, ANCHOR_THRESHOLD)
     Thread(target=hotkey_listener, daemon=True).start()
