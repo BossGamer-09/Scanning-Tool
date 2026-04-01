@@ -26,7 +26,7 @@ Double-click the exe. A console window will open showing startup progress:
 ```
 Ollama found: ollama version is X.X.X
 Local Ollama service detected.
-Model moondream not found — Pulling now...   ← first run only, ~1.7 GB
+Model qwen2.5vl:3b not found — Pulling now...   ← first run only, ~2 GB
 Model installed successfully.
 Hotkeys registered...
 ```

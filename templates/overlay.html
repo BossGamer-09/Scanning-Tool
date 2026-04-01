@@ -293,6 +293,14 @@
       min-width: 52px;
       text-align: right;
     }
+    .hist-sig {
+      font-size: 11px;
+      color: var(--accent);
+      font-family: 'Consolas', monospace;
+      min-width: 48px;
+      text-align: right;
+      opacity: 0.75;
+    }
     .hist-time {
       font-size: 11px;
       color: var(--muted);
@@ -494,7 +502,7 @@ function pushHistory(info, j) {
   const tier  = topTier(j.table);
   const color = tier ? TIER_COLOR[tier] : '#5ee5ff';
   history.unshift({ name: info.name, deposits: info.deposits, tier, color,
-                    category: info.category, time: new Date() });
+                    category: info.category, code: j.code, time: new Date() });
   if (history.length > 8) history.pop();
   renderHistory();
 }
@@ -506,11 +514,13 @@ function renderHistory() {
   for (const h of history) {
     const dep   = (h.deposits > 0) ? `<span class="hist-dep">×${h.deposits}</span>` : '';
     const tText = h.tier && h.tier !== 'OTHER' ? h.tier : (h.category || '—');
+    const sig = h.code ? `<span class="hist-sig">${h.code}</span>` : '';
     html += `<div class="hist-item">
       <div class="hist-dot" style="background:${h.color};box-shadow:0 0 6px ${h.color}88"></div>
       <span class="hist-name">${h.name}</span>
       ${dep}
       <span class="hist-tier">${tText}</span>
+      ${sig}
       <span class="hist-time">${fmtTime(h.time)}</span>
     </div>`;
   }

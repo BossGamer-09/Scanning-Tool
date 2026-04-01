@@ -482,7 +482,7 @@ def ensure_ollama_running() -> None:
 
     sys.exit("Unable to reach a local Ollama service. Please start 'ollama serve' and rerun.")
 
-def ensure_model_installed(model="moondream"):
+def ensure_model_installed(model="qwen2.5vl:3b"):
     """Ensure the Ollama model exists on the configured host."""
 
     host = get_ollama_host()
@@ -534,12 +534,12 @@ ANCHOR_THRESHOLD = 0.82
 AUTO_ALIGN_ENABLED = True
 ANCHOR_TEMPLATE_DIR = "assets/anchor_templates"
 ALIGNMENT_POLL_INTERVAL_MS = 500
-CONTINUOUS_CAPTURE_INTERVAL = 2.0
+CONTINUOUS_CAPTURE_INTERVAL = 0.2
 INFO_OVERLAY_OFFSET = {"x": 0, "y": 0}
 label_color = "yellow"
 MIN_CONFIDENCE = 0.65
 DEBUG_SHOW_OVERLAY = True
-OLLAMA_MODEL = "moondream"   # vision model — lightweight, fast digit reader
+OLLAMA_MODEL = "qwen2.5vl:3b"   # vision model
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 CONFIGURED_OLLAMA_HOST = ""
 
@@ -1029,25 +1029,6 @@ with open(rock_file, "r") as f:
 
 # ---------- Multiplier Codes ----------
 MULTIPLIER_CODES = {
-    # ── Legacy deposit-type codes (pre-4.7, unchanged) ───────
-    620:  {"key": "GEMS",          "display_name": "Gems",          "rarity": "common",   "category": "Gems"},
-    1660: {"key": "ITYPE",         "display_name": "I-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1700: {"key": "CTYPE",         "display_name": "C-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1720: {"key": "STYPE",         "display_name": "S-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1730: {"key": "SHALE",         "display_name": "Shale",         "rarity": "common",   "category": "Rock Deposits"},
-    1750: {"key": "PTYPE",         "display_name": "P-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1770: {"key": "FELSIC",        "display_name": "Felsic",        "rarity": "common",   "category": "Rock Deposits"},
-    1790: {"key": "OBSIDIAN",      "display_name": "Obsidian",      "rarity": "common",   "category": "Rock Deposits"},
-    1800: {"key": "ATACAMITE",     "display_name": "Atacamite",     "rarity": "common",   "category": "Rock Deposits"},
-    1820: {"key": "QUARTZITE",     "display_name": "Quartzite",     "rarity": "common",   "category": "Rock Deposits"},
-    1840: {"key": "GNEISS",        "display_name": "Gneiss",        "rarity": "common",   "category": "Rock Deposits"},
-    1850: {"key": "MTYPE",         "display_name": "M-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1870: {"key": "QTYPE",         "display_name": "Q-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1900: {"key": "ETYPE",         "display_name": "E-Type",        "rarity": "common",   "category": "Rock Deposits"},
-    1920: {"key": "GRANITE",       "display_name": "Granite",       "rarity": "common",   "category": "Rock Deposits"},
-    1950: {"key": "IGNEOUS",       "display_name": "Igneous",       "rarity": "common",   "category": "Rock Deposits"},
-    2000: {"key": "SALVAGE",       "display_name": "Metal Panels",  "rarity": "common",   "category": "Salvage"},
-
     # ── 4.7 Ore RS base codes — verified against 4.7.0-PTU-11414557 (@MrKraken) ──
     # HIGHEST tier (lowest RS = rarest / most valuable)
     3170: {"key": "QUANTANIUM",    "display_name": "Quantanium",   "rarity": "rare",     "category": "Ore"},
@@ -1085,31 +1066,22 @@ MULTIPLIER_CODES = {
 # ---------- Ore Value Tiers ----------
 ORE_TIERS = {
     "HIGHEST": {
-        "ores": [
-            "QUANTANIUM", "STILERON", "RICCITE",       # pre-4.7
-            "SAVRILIUM", "OURATITE", "LINDINIUM",       # 4.7 new
-        ],
+        "ores": ["QUANTANIUM", "STILERON", "RICCITE", "SAVRILIUM", "OURATITE", "LINDINIUM"],
         "color": "#E88AFF",
     },
     "HIGH": {
-        "ores": [
-            "TARANITE", "BEXALITE", "GOLD",             # pre-4.7
-            "BERYL", "BORASE",                          # 4.7: promoted from MEDIUM (RS 3540-3570)
-        ],
+        "ores": ["TARANITE", "BEXALITE", "GOLD", "BERYL", "BORASE"],
         "color": "#63E64C",
     },
     "MEDIUM": {
-        "ores": [
-            "LARANITE", "AGRICIUM", "HEPHAESTANITE",    # pre-4.7 (BERYL+BORASE promoted to HIGH)
-            "ASLARITE", "TORITE",                       # 4.7 new
-        ],
+        "ores": ["LARANITE", "AGRICIUM", "HEPHAESTANITE", "ASLARITE", "TORITE"],
         "color": "#E6E14C",
     },
     "LOW": {
         "ores": [
             "TUNGSTEN", "TITANIUM", "SILICON", "IRON",
             "QUARTZ", "CORUNDUM", "COPPER", "TIN",
-            "ALUMINUM", "ALUMINIUM", "ICE",             # both spellings for compat
+            "ALUMINIUM", "ICE",
         ],
         "color": "#E69E4C",
     },
@@ -1160,9 +1132,10 @@ def ocr_with_ollama(pil_img: Image.Image, model=OLLAMA_MODEL) -> str:
             messages=[{
                 "role": "user",
                 "content": (
-                    "What number is shown in this image? "
-                    "Reply with ONLY the digits and nothing else. "
-                    "If no number is visible, reply with exactly: NONE"
+                    "This is a cropped screenshot from the Star Citizen game HUD. "
+                    "It may contain a 3-6 digit numeric scan signature code. "
+                    "If you can see a clear numeric code, reply with ONLY that number and nothing else. "
+                    "If the image is blank, blurry, or contains no clear numeric code, reply with exactly: NONE"
                 ),
                 "images": [img_bytes],
             }],
@@ -1219,36 +1192,35 @@ def lookup_deposit(code: str):
         # 0 % anything == 0 in Python, so a code of all-zeros would falsely
         # match every base. The smallest real base code is 620, so any value
         # below that can never be a valid scan result.
-        if num_code < 620:
+        # All 4.7 ore base codes are >= 3170. Anything below that is noise.
+        if num_code < 3170:
             return None
 
-        # Split candidates into 4.7 ore codes (base >= 3000) and legacy
-        # deposit codes (base < 3000) so each group can use the right
-        # tie-breaking rule.
-        ore_47: List[Tuple[int, dict]] = []
-        legacy:  List[Tuple[int, dict]] = []
+        # Maximum plausible deposit count per ore tier (matches RockTypes
+        # clusterCount max of 13). Eliminates OCR hallucinations like
+        # 68000 → Lindinium×20.
+        TIER_DEPOSIT_CAP = {
+            "HIGHEST": 4,
+            "HIGH":    10,
+            "MEDIUM":  13,
+            "LOW":     13,
+        }
 
+        candidates: List[Tuple[int, dict]] = []
         for base_code, info in MULTIPLIER_CODES.items():
             if num_code % base_code == 0:
-                if base_code >= 3000:
-                    ore_47.append((base_code, info))
-                else:
-                    legacy.append((base_code, info))
+                deps = num_code // base_code
+                tier = ORE_VALUE_MAP.get(info["key"].upper(), {}).get("tier", "LOW")
+                cap  = TIER_DEPOSIT_CAP.get(tier, 13)
+                if deps <= cap:
+                    candidates.append((base_code, info))
 
-        if ore_47:
-            # Within 4.7 ores, prefer the SMALLEST base (rarest ore / most
-            # deposits).  "Largest base wins" causes wrong results at high
-            # deposit counts: e.g. SAVRILIUM×6 (19200) = ASLARITE×5 (19200).
-            # Picking the rarest ore avoids missing a valuable find.
-            best_base, best_info = min(ore_47, key=lambda x: x[0])
-        elif legacy:
-            # Legacy deposit codes: prefer the largest base so that a
-            # 4.7-era value which is also divisible by a small legacy code
-            # (e.g. 620) doesn't get swallowed by GEMS.
-            best_base, best_info = max(legacy, key=lambda x: x[0])
-        else:
+        if not candidates:
             return None
 
+        # Prefer the smallest base (rarest ore). Avoids e.g. SAVRILIUM×6
+        # (19200) being shadowed by ASLARITE×5 (19200).
+        best_base, best_info = min(candidates, key=lambda x: x[0])
         deposits = num_code // best_base
         return {
             "name": best_info["display_name"],
@@ -2455,6 +2427,7 @@ def capture_once():
         pil_img = Image.frombytes("RGB", img.size, img.rgb)
 
     raw_text = ocr_with_ollama(pil_img)
+    logger.debug("OCR raw: %r", raw_text)
     code, raw = extract_code_from_text(raw_text)
     info = lookup_deposit(code)
 
@@ -2590,7 +2563,7 @@ if __name__ == "__main__":
     # Ensure Ollama + model before starting
     ensure_ollama_installed()
     ensure_ollama_running()
-    ensure_model_installed("moondream")
+    ensure_model_installed("qwen2.5vl:3b")
 
     anchor_tracker = AnchorRegionTracker(ANCHOR_TEMPLATE_DIR, ANCHOR_THRESHOLD)
     Thread(target=hotkey_listener, daemon=True).start()
