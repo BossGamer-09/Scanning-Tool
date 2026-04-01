@@ -1115,7 +1115,7 @@ def build_deposit_tables(rock_data):
                 "tier": value_info["tier"],
                 "color": value_info["color"]
             })
-        tier_order = ["HIGHEST", "HIGH", "MEDIUM", "LOW", "OTHER"]
+        tier_order = ["LEGENDARY", "EPIC", "RARE", "UNCOMMON", "COMMON", "OTHER"]
         table.sort(key=lambda x: tier_order.index(x["tier"]))
         deposit_tables[deposit_name.upper()] = table
     return deposit_tables
