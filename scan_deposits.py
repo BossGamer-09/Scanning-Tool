@@ -1029,61 +1029,66 @@ with open(rock_file, "r") as f:
 
 # ---------- Multiplier Codes ----------
 MULTIPLIER_CODES = {
-    # ── 4.7 Ore RS base codes — verified against 4.7.0-PTU-11414557 (@MrKraken) ──
-    # HIGHEST tier (lowest RS = rarest / most valuable)
-    3170: {"key": "QUANTANIUM",    "display_name": "Quantanium",   "rarity": "rare",     "category": "Ore"},
-    3185: {"key": "STILERON",      "display_name": "Stileron",     "rarity": "rare",     "category": "Ore"},
-    3200: {"key": "SAVRILIUM",     "display_name": "Savrilium",    "rarity": "rare",     "category": "Ore"},
-    3370: {"key": "OURATITE",      "display_name": "Ouratite",     "rarity": "rare",     "category": "Ore"},
-    3385: {"key": "RICCITE",       "display_name": "Riccite",      "rarity": "rare",     "category": "Ore"},
-    3400: {"key": "LINDINIUM",     "display_name": "Lindinium",    "rarity": "rare",     "category": "Ore"},
-    # HIGH tier
-    3540: {"key": "BERYL",         "display_name": "Beryl",        "rarity": "uncommon", "category": "Ore"},
-    3555: {"key": "TARANITE",      "display_name": "Taranite",     "rarity": "uncommon", "category": "Ore"},
-    3570: {"key": "BORASE",        "display_name": "Borase",       "rarity": "uncommon", "category": "Ore"},
-    3585: {"key": "GOLD",          "display_name": "Gold",         "rarity": "uncommon", "category": "Ore"},
-    3600: {"key": "BEXALITE",      "display_name": "Bexalite",     "rarity": "uncommon", "category": "Ore"},
-    # MEDIUM tier
-    3825: {"key": "LARANITE",      "display_name": "Laranite",     "rarity": "common",   "category": "Ore"},
-    3840: {"key": "ASLARITE",      "display_name": "Aslarite",     "rarity": "common",   "category": "Ore"},
-    3855: {"key": "TITANIUM",      "display_name": "Titanium",     "rarity": "common",   "category": "Ore"},
-    3870: {"key": "TUNGSTEN",      "display_name": "Tungsten",     "rarity": "common",   "category": "Ore"},
-    3885: {"key": "AGRICIUM",      "display_name": "Agricium",     "rarity": "common",   "category": "Ore"},
-    3900: {"key": "TORITE",        "display_name": "Torite",       "rarity": "common",   "category": "Ore"},
-    4175: {"key": "HEPHAESTANITE", "display_name": "Hephaestanite","rarity": "common",   "category": "Ore"},  # ✓ confirmed (PTU image wrongly showed 4180)
-    # LOW tier
-    4195: {"key": "TIN",           "display_name": "Tin",          "rarity": "common",   "category": "Ore"},
-    4210: {"key": "QUARTZ",        "display_name": "Quartz",       "rarity": "common",   "category": "Ore"},
-    4225: {"key": "CORUNDUM",      "display_name": "Corundum",     "rarity": "common",   "category": "Ore"},
-    4240: {"key": "COPPER",        "display_name": "Copper",       "rarity": "common",   "category": "Ore"},
-    4255: {"key": "SILICON",       "display_name": "Silicon",      "rarity": "common",   "category": "Ore"},
-    4270: {"key": "IRON",          "display_name": "Iron",         "rarity": "common",   "category": "Ore"},
-    4285: {"key": "ALUMINIUM",     "display_name": "Aluminium",    "rarity": "common",   "category": "Ore"},
-    4300: {"key": "ICE",           "display_name": "Ice",          "rarity": "common",   "category": "Ore"},  # ✓ confirmed
+    # ── 4.7 Ore RS base codes — community cheat sheet verified ──
+    # Legendary
+    3170: {"key": "QUANTANIUM",    "display_name": "Quantanium",    "rarity": "legendary", "category": "Ore"},
+    3185: {"key": "STILERON",      "display_name": "Stileron",      "rarity": "legendary", "category": "Ore"},
+    3200: {"key": "SAVRILIUM",     "display_name": "Savrilium",     "rarity": "legendary", "category": "Ore"},
+    # Epic
+    3370: {"key": "OURATITE",      "display_name": "Ouratite",      "rarity": "epic",      "category": "Ore"},
+    3385: {"key": "RICCITE",       "display_name": "Riccite",       "rarity": "epic",      "category": "Ore"},
+    3400: {"key": "LINDINIUM",     "display_name": "Lindinium",     "rarity": "epic",      "category": "Ore"},
+    # Rare
+    3540: {"key": "BERYL",         "display_name": "Beryl",         "rarity": "rare",      "category": "Ore"},
+    3555: {"key": "TARANITE",      "display_name": "Taranite",      "rarity": "rare",      "category": "Ore"},
+    3570: {"key": "BORASE",        "display_name": "Borase",        "rarity": "rare",      "category": "Ore"},
+    3585: {"key": "GOLD",          "display_name": "Gold",          "rarity": "rare",      "category": "Ore"},
+    3600: {"key": "BEXALITE",      "display_name": "Bexalite",      "rarity": "rare",      "category": "Ore"},
+    # Uncommon
+    3825: {"key": "LARANITE",      "display_name": "Laranite",      "rarity": "uncommon",  "category": "Ore"},
+    3840: {"key": "ASLARITE",      "display_name": "Aslarite",      "rarity": "uncommon",  "category": "Ore"},
+    3855: {"key": "TITANIUM",      "display_name": "Titanium",      "rarity": "uncommon",  "category": "Ore"},
+    3870: {"key": "TUNGSTEN",      "display_name": "Tungsten",      "rarity": "uncommon",  "category": "Ore"},
+    3885: {"key": "AGRICIUM",      "display_name": "Agricium",      "rarity": "uncommon",  "category": "Ore"},
+    3900: {"key": "TORITE",        "display_name": "Torite",        "rarity": "uncommon",  "category": "Ore"},
+    # Common
+    4180: {"key": "HEPHAESTANITE", "display_name": "Hephaestanite", "rarity": "common",    "category": "Ore"},
+    4195: {"key": "TIN",           "display_name": "Tin",           "rarity": "common",    "category": "Ore"},
+    4210: {"key": "QUARTZ",        "display_name": "Quartz",        "rarity": "common",    "category": "Ore"},
+    4225: {"key": "CORUNDUM",      "display_name": "Corundum",      "rarity": "common",    "category": "Ore"},
+    4240: {"key": "COPPER",        "display_name": "Copper",        "rarity": "common",    "category": "Ore"},
+    4255: {"key": "SILICON",       "display_name": "Silicon",       "rarity": "common",    "category": "Ore"},
+    4270: {"key": "IRON",          "display_name": "Iron",          "rarity": "common",    "category": "Ore"},
+    4285: {"key": "ALUMINIUM",     "display_name": "Aluminium",     "rarity": "common",    "category": "Ore"},
+    4300: {"key": "ICE",           "display_name": "Ice",           "rarity": "common",    "category": "Ore"},
 }
 
 
 # ---------- Ore Value Tiers ----------
 ORE_TIERS = {
-    "HIGHEST": {
-        "ores": ["QUANTANIUM", "STILERON", "RICCITE", "SAVRILIUM", "OURATITE", "LINDINIUM"],
-        "color": "#E88AFF",
+    # Tiers match in-game cheat sheet: Legendary > Epic > Rare > Uncommon > Common
+    "LEGENDARY": {
+        "ores": ["QUANTANIUM", "STILERON", "SAVRILIUM"],
+        "color": "#FFD700",   # gold
     },
-    "HIGH": {
-        "ores": ["TARANITE", "BEXALITE", "GOLD", "BERYL", "BORASE"],
-        "color": "#63E64C",
+    "EPIC": {
+        "ores": ["OURATITE", "RICCITE", "LINDINIUM"],
+        "color": "#FF8C00",   # orange
     },
-    "MEDIUM": {
-        "ores": ["LARANITE", "AGRICIUM", "HEPHAESTANITE", "ASLARITE", "TORITE"],
-        "color": "#E6E14C",
+    "RARE": {
+        "ores": ["BERYL", "TARANITE", "BORASE", "GOLD", "BEXALITE"],
+        "color": "#E88AFF",   # purple
     },
-    "LOW": {
+    "UNCOMMON": {
+        "ores": ["LARANITE", "ASLARITE", "TITANIUM", "TUNGSTEN", "AGRICIUM", "TORITE"],
+        "color": "#63E64C",   # green
+    },
+    "COMMON": {
         "ores": [
-            "TUNGSTEN", "TITANIUM", "SILICON", "IRON",
-            "QUARTZ", "CORUNDUM", "COPPER", "TIN",
-            "ALUMINIUM", "ICE",
+            "HEPHAESTANITE", "TIN", "QUARTZ", "CORUNDUM",
+            "COPPER", "SILICON", "IRON", "ALUMINIUM", "ICE",
         ],
-        "color": "#E69E4C",
+        "color": "#87CEEB",   # sky blue
     },
 }
 ORE_VALUE_MAP = {}
@@ -1200,17 +1205,18 @@ def lookup_deposit(code: str):
         # clusterCount max of 13). Eliminates OCR hallucinations like
         # 68000 → Lindinium×20.
         TIER_DEPOSIT_CAP = {
-            "HIGHEST": 4,
-            "HIGH":    10,
-            "MEDIUM":  13,
-            "LOW":     13,
+            "LEGENDARY": 4,
+            "EPIC":      6,
+            "RARE":      10,
+            "UNCOMMON":  13,
+            "COMMON":    13,
         }
 
         candidates: List[Tuple[int, dict]] = []
         for base_code, info in MULTIPLIER_CODES.items():
             if num_code % base_code == 0:
                 deps = num_code // base_code
-                tier = ORE_VALUE_MAP.get(info["key"].upper(), {}).get("tier", "LOW")
+                tier = ORE_VALUE_MAP.get(info["key"].upper(), {}).get("tier", "COMMON")
                 cap  = TIER_DEPOSIT_CAP.get(tier, 13)
                 if deps <= cap:
                     candidates.append((base_code, info))

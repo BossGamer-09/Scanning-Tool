@@ -402,8 +402,8 @@
 </div>
 
 <script>
-const TIER_COLOR = { HIGHEST:'#E88AFF', HIGH:'#63E64C', MEDIUM:'#E6E14C', LOW:'#E69E4C', OTHER:'#5f8da8' };
-const RARITY_COLOR = { rare:'#E88AFF', uncommon:'#63E64C', common:'#5f8da8' };
+const TIER_COLOR = { LEGENDARY:'#FFD700', EPIC:'#FF8C00', RARE:'#E88AFF', UNCOMMON:'#63E64C', COMMON:'#87CEEB', OTHER:'#5f8da8' };
+const RARITY_COLOR = { legendary:'#FFD700', epic:'#FF8C00', rare:'#E88AFF', uncommon:'#63E64C', common:'#87CEEB' };
 
 let region      = 'STANTON';
 let lastCode    = null;
@@ -421,7 +421,7 @@ function fmtTime(d) {
 
 function topTier(table) {
   if (!table || !table.length) return null;
-  for (const t of ['HIGHEST','HIGH','MEDIUM','LOW'])
+  for (const t of ['LEGENDARY','EPIC','RARE','UNCOMMON','COMMON'])
     if (table.some(r => r.tier === t)) return t;
   return 'OTHER';
 }
