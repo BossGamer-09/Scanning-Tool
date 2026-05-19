@@ -18,7 +18,7 @@ That's it. No Python installation needed.
 ### 1. Install Ollama
 Download and install from **https://ollama.com/**
 
-Run the installer and leave Ollama running in the system tray. You do not need to do anything else — the scanner will download the AI model automatically on first launch.
+Run the installer and leave Ollama running in the system tray. You do not need to do anything else — the scanner downloads the AI model automatically on first launch.
 
 ### 2. Run BlightVeilScanner.exe
 Double-click the exe. A console window will open showing startup progress:
@@ -36,8 +36,6 @@ The control panel GUI will open once setup is complete. The **first launch takes
 ---
 
 ## Files Created on First Run
-
-After launching, the following are created next to the exe automatically:
 
 | File / Folder | Purpose |
 |---|---|
@@ -75,54 +73,55 @@ Click **Save Config** after adjusting sliders. Settings are restored automatical
 The scanner hosts a web page on your local network showing the current scan result, mineral composition table, and scan history.
 
 1. In the control panel click **Open Mobile UI** — your browser opens to the local address
-2. On your phone or tablet open the same address shown in the console:
-   ```
-   http://192.168.x.x:5000
-   ```
+2. On your phone or tablet open the same address shown in the console (e.g. `http://192.168.x.x:5000`)
 3. Keep the page open while you play — it updates every half second automatically
 
-The Stanton / Pyro toggle on the web page switches the mineral composition data to the correct system.
+Use the **Stanton / Pyro** toggle on the web page to switch mineral composition data to the correct system.
 
 ---
 
 ## Head Sway Compensation
 
-The scanner can automatically adjust the capture region when your character's head moves in-game (head sway), keeping it locked on the correct HUD element.
+The scanner can automatically adjust the capture region when your character's head moves in-game, keeping it locked on the correct HUD element.
 
 ### Setup
-1. Take a screenshot of a stable part of your HUD that does not move relative to the scan code (e.g. a static icon or frame element near the signature display)
-2. Crop out just that element and save it as a `.png` or `.jpg`
+1. Screenshot a stable part of your HUD that does not move relative to the scan code (e.g. a static icon or frame near the signature display)
+2. Crop just that element and save it as `.png` or `.jpg`
 3. Drop the image into `assets\anchor_templates\` next to the exe
 4. Click **Reload Templates** in the control panel
 
-Once templates are loaded, enable **Enable auto alignment** in the Head Sway Compensation section. The status bar will show `Locked XX%` when the anchor is found.
+Enable **Enable auto alignment** in the Head Sway Compensation section. The status bar shows `Locked XX%` when the anchor is found.
 
 ### Tuning
 - **Detection threshold** — raise it (closer to 1.0) if it locks onto the wrong thing; lower it if it fails to lock
-- **Alignment interval** — how often it checks (ms). 500ms is a good default
+- **Alignment interval** — how often it checks (ms). 500 ms is a good default
 
 ---
 
 ## Remote Ollama (Advanced)
 
-If you run Ollama on a different PC on your network (e.g. a gaming PC with no Python):
+If you run Ollama on a different PC on your network:
 
-1. In the control panel find **Ollama Connection**
-2. Enter the host IP and port: `http://192.168.x.x:11434`
-3. Click **Apply Host**
+1. On the Ollama machine: set the environment variable `OLLAMA_HOST=0.0.0.0` and open firewall port 11434
+2. In the scanner control panel find **Ollama Connection**
+3. Enter the host address: `http://192.168.x.x:11434`
+4. Click **Apply Host**
 
 Leave the field blank to use the local installation.
 
 ---
 
-## Ore Value Tiers
+## Ore Value Tiers (4.x)
 
-| Tier | Colour | Examples |
-|---|---|---|
-| Highest | Purple | Quantanium, Stileron, Savrilium |
-| High | Green | Taranite, Bexalite, Gold, Beryl |
-| Medium | Yellow | Laranite, Agricium, Hephaestanite |
-| Low | Orange | Tungsten, Titanium, Iron, Ice |
+Scan codes are a base value multiplied by deposit count (1–6). The scanner resolves the code to the rarest matching ore.
+
+| Tier | Colour | Ores | Base Code Range |
+|---|---|---|---|
+| Legendary | Gold | Quantanium, Stileron, Savrilium | 3170 – 3200 |
+| Epic | Orange | Ouratite, Riccite, Lindinium | 3370 – 3400 |
+| Rare | Purple | Beryl, Taranite, Borase, Gold, Bexalite | 3540 – 3600 |
+| Uncommon | Green | Laranite, Aslarite, Titanium, Tungsten, Agricium, Torite | 3825 – 3900 |
+| Common | Blue | Hephaestanite, Tin, Quartz, Corundum, Copper, Silicon, Iron, Aluminum, Ice | 4180 – 4300 |
 
 ---
 
@@ -135,30 +134,30 @@ The capture region is not on the signature code. Reposition the red box using th
 Install Ollama from https://ollama.com/ and make sure it is running before launching the scanner.
 
 **Model download is stuck or failed**
-Check your internet connection and try again. The model (`qwen2.5vl:3b`) is ~2 GB. You can also pull it manually by running `ollama pull qwen2.5vl:3b` in a terminal.
+Check your internet connection and try again. The model (`qwen2.5vl:3b`) is ~2 GB. You can also pull it manually: open a terminal and run `ollama pull qwen2.5vl:3b`.
 
 **The overlay text does not appear**
-Click **Update Overlay** in the control panel, or try dragging the control panel window to force a redraw.
+Click **Update Overlay** in the control panel, or drag the control panel window to force a redraw.
 
 **Hotkeys not working**
-The `keyboard` library requires the scanner to run with standard user permissions. Do not run as Administrator — it can prevent global hotkeys from registering in some setups.
+Do not run the exe as Administrator — it can prevent global hotkeys from registering. Run it as a normal user.
 
 **Windows Defender flags the exe**
-This is a false positive common with PyInstaller-built executables. The source code is fully open — build the exe yourself from `scan_deposits.py` using `build_exe.bat` if you prefer.
+This is a false positive common with PyInstaller-built executables. The full source code is available on GitHub — build the exe yourself from `scan_deposits.py` using `build_exe.bat` if you prefer.
 
 ---
 
 ## Configuration Reference
 
-`config.json` is created next to the exe on first run. You can edit it in any text editor.
+`config.json` is created next to the exe on first run and can be edited in any text editor.
 
 | Key | Description |
 |---|---|
 | `CAP_REGION` | Pixel coordinates of the scan capture box |
 | `ANCHOR_REGION` | Area searched for head-sway anchor templates |
 | `ANCHOR_OFFSET` | Pixel offset from anchor match to capture region |
-| `ANCHOR_THRESHOLD` | Match confidence required (0.1–0.99, default 0.82) |
-| `AUTO_ALIGN_ENABLED` | Enable/disable head sway compensation |
+| `ANCHOR_THRESHOLD` | Match confidence required (0.1 – 0.99, default 0.82) |
+| `AUTO_ALIGN_ENABLED` | Enable / disable head sway compensation |
 | `ALIGNMENT_POLL_INTERVAL_MS` | How often alignment runs (ms) |
 | `CONTINUOUS_CAPTURE_INTERVAL` | Seconds between scans in loop mode |
 | `INFO_OVERLAY_OFFSET` | X/Y pixel offset for the floating result label |
