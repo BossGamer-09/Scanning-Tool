@@ -11,22 +11,24 @@ set "SCRIPT_DIR=%~dp0"
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 cd /d "%SCRIPT_DIR%"
 
-REM ── Check Python ─────────────────────────────────────────────────────────────
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python not found in PATH.
-    echo         Run launch_windows.bat first to set up the environment,
-    echo         then re-run this script from that same terminal.
+set "VENV_DIR=%SCRIPT_DIR%\venv"
+set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
+set "VENV_PIP=%VENV_DIR%\Scripts\pip.exe"
+
+REM ── Ensure the venv exists (run launch_windows.bat first if not) ─────────────
+if not exist "%VENV_PYTHON%" (
+    echo [ERROR] Virtual environment not found at: %VENV_DIR%
+    echo         Run launch_windows.bat first to set up the environment.
     pause & exit /b 1
 )
 
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do set "PY_VER=%%v"
+for /f "tokens=2" %%v in ('"%VENV_PYTHON%" --version 2^>^&1') do set "PY_VER=%%v"
 echo  Python: %PY_VER%
 
-REM ── Install / upgrade PyInstaller ────────────────────────────────────────────
+REM ── Install / upgrade PyInstaller into the venv ──────────────────────────────
 echo.
 echo  Installing / upgrading PyInstaller...
-pip install pyinstaller --upgrade --quiet
+"%VENV_PIP%" install pyinstaller --upgrade --quiet
 if errorlevel 1 (
     echo [ERROR] Failed to install PyInstaller.
     pause & exit /b 1
@@ -37,11 +39,11 @@ echo  Cleaning previous build...
 if exist build rmdir /s /q build
 if exist dist  rmdir /s /q dist
 
-REM ── Run PyInstaller ──────────────────────────────────────────────────────────
+REM ── Run PyInstaller via the venv Python ──────────────────────────────────────
 echo.
 echo  Building BlightVeilScanner.exe  (this may take a few minutes)...
 echo.
-pyinstaller BlightVeilScanner.spec --clean --noconfirm
+"%VENV_PYTHON%" -m PyInstaller BlightVeilScanner.spec --clean --noconfirm
 
 if errorlevel 1 (
     echo.
@@ -52,7 +54,7 @@ if errorlevel 1 (
 REM ── Success ───────────────────────────────────────────────────────────────────
 echo.
 echo  =====================================================
-echo   Build complete!
+echo   Build complete^^!
 echo  =====================================================
 echo.
 echo   Executable : dist\BlightVeilScanner.exe
