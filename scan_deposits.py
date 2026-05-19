@@ -1059,7 +1059,7 @@ MULTIPLIER_CODES = {
     4240: {"key": "COPPER",        "display_name": "Copper",        "rarity": "common",    "category": "Ore"},
     4255: {"key": "SILICON",       "display_name": "Silicon",       "rarity": "common",    "category": "Ore"},
     4270: {"key": "IRON",          "display_name": "Iron",          "rarity": "common",    "category": "Ore"},
-    4285: {"key": "ALUMINIUM",     "display_name": "Aluminium",     "rarity": "common",    "category": "Ore"},
+    4285: {"key": "ALUMINUM",      "display_name": "Aluminum",      "rarity": "common",    "category": "Ore"},
     4300: {"key": "ICE",           "display_name": "Ice",           "rarity": "common",    "category": "Ore"},
 }
 
@@ -1086,7 +1086,7 @@ ORE_TIERS = {
     "COMMON": {
         "ores": [
             "HEPHAESTANITE", "TIN", "QUARTZ", "CORUNDUM",
-            "COPPER", "SILICON", "IRON", "ALUMINIUM", "ICE",
+            "COPPER", "SILICON", "IRON", "ALUMINUM", "ICE",
         ],
         "color": "#87CEEB",   # sky blue
     },
@@ -1205,7 +1205,7 @@ def lookup_deposit(code: str):
         # clusterCount max of 13). Eliminates OCR hallucinations like
         # 68000 → Lindinium×20.
         TIER_DEPOSIT_CAP = {
-            "LEGENDARY": 4,
+            "LEGENDARY": 6,
             "EPIC":      6,
             "RARE":      10,
             "UNCOMMON":  13,
