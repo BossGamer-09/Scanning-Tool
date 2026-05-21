@@ -908,7 +908,7 @@ class AnchorRegionTracker:
             "height": int(region["height"]),
         }
 
-        with mss.mss() as sct:
+        with mss.MSS() as sct:
             try:
                 screenshot = sct.grab(monitor)
             except Exception as exc:
@@ -1126,28 +1126,61 @@ DEPOSIT_TABLES = {
 }
 
 # ---------- OCR with Ollama ----------
+
+# How long (seconds) to wait for Ollama before giving up on a single scan.
+# At 0.2 s continuous interval a 10 s timeout means at most 1 hung scan
+# before the loop recovers cleanly.
+OLLAMA_TIMEOUT_S = 10
+
+# Set to True to save every captured image to debug_capture.png for inspection.
+OCR_DEBUG_SAVE = True
+OCR_DEBUG_PATH = "debug_capture.png"
+
+_OCR_PROMPT = (
+    "This is a cropped screenshot from the Star Citizen game HUD. "
+    "It may contain a 3-6 digit numeric scan signature code. "
+    "If you can see a clear numeric code, reply with ONLY that number and nothing else. "
+    "If the image is blank, blurry, or contains no clear numeric code, reply with exactly: NONE"
+)
+
+
 def ocr_with_ollama(pil_img: Image.Image, model=OLLAMA_MODEL) -> str:
     buf = io.BytesIO()
     pil_img.save(buf, format="PNG")
     img_bytes = buf.getvalue()
+
+    # Optionally save the captured region so you can inspect exactly what the
+    # model is seeing without having to run a separate debug session.
+    if OCR_DEBUG_SAVE:
+        try:
+            pil_img.save(OCR_DEBUG_PATH)
+        except Exception as _e:
+            logger.debug("Could not save debug capture: %s", _e)
+
+    logger.info(
+        "OCR ▶ sending to model=%s  image=%dx%d px  prompt=%r",
+        model, pil_img.width, pil_img.height, _OCR_PROMPT,
+    )
+
     client = get_ollama_client()
+    t0 = time.monotonic()
     try:
         response = client.chat(
             model=model,
             messages=[{
                 "role": "user",
-                "content": (
-                    "This is a cropped screenshot from the Star Citizen game HUD. "
-                    "It may contain a 3-6 digit numeric scan signature code. "
-                    "If you can see a clear numeric code, reply with ONLY that number and nothing else. "
-                    "If the image is blank, blurry, or contains no clear numeric code, reply with exactly: NONE"
-                ),
+                "content": _OCR_PROMPT,
                 "images": [img_bytes],
             }],
+            options={"num_predict": 16},   # cap token output — we only need a short number
         )
-        return response["message"]["content"].strip()
+        elapsed = time.monotonic() - t0
+        reply = response["message"]["content"].strip()
+        logger.info("OCR ◀ reply=%r  elapsed=%.2fs", reply, elapsed)
+        return reply
     except Exception as e:
-        logger.error(f"Ollama OCR error: {e}")
+        elapsed = time.monotonic() - t0
+        logger.error("OCR ✗ error after %.2fs: %s", elapsed, e)
         return ""
 
 
@@ -1245,6 +1278,10 @@ def lookup_deposit(code: str):
 continuous_mode = False
 show_border = True
 border_canvas = None
+
+# Module-level reference to the main Tk root, set by launch_gui().
+# Used to safely schedule Tkinter updates from background threads via after().
+_tk_root: Optional[tk.Tk] = None
 
 capture_overlay_root = None
 capture_overlay_canvas = None
@@ -1348,7 +1385,11 @@ def toggle_border():
 
 
 def update_overlay_label(info, *, code: Optional[str] = None, raw_text: Optional[str] = None) -> None:
-    """Update the floating label with the latest scan result."""
+    """Update the floating label with the latest scan result.
+
+    Safe to call from any thread — Tkinter updates are always dispatched to
+    the main thread via _tk_root.after(0, ...) to prevent GUI deadlocks.
+    """
     global overlay_text, info_overlay_canvas, info_text_id, last_overlay_time
 
     message = ""
@@ -1360,8 +1401,26 @@ def update_overlay_label(info, *, code: Optional[str] = None, raw_text: Optional
         last_overlay_time = time.time()
     else:
         last_overlay_time = 0
-    if info_overlay_canvas and info_text_id:
-        info_overlay_canvas.itemconfig(info_text_id, text=overlay_text, fill=label_color)
+
+    # Capture values for the closure so the lambda always uses the current ones.
+    _text = overlay_text
+    _color = label_color
+
+    def _do_update():
+        if info_overlay_canvas and info_text_id:
+            try:
+                info_overlay_canvas.itemconfig(info_text_id, text=_text, fill=_color)
+            except tk.TclError:
+                pass
+
+    if _tk_root is not None:
+        try:
+            _tk_root.after(0, _do_update)
+        except tk.TclError:
+            pass
+    else:
+        # GUI not yet initialised — safe to call directly (still on main thread)
+        _do_update()
 
 
 def compute_info_overlay_geometry(screen_width: int, screen_height: int) -> Tuple[int, int, int, int]:
@@ -2029,7 +2088,9 @@ def launch_gui():
 
         root.destroy()
 
+    global _tk_root
     root = tk.Tk()
+    _tk_root = root
     root.title("Star Citizen Scanner Control")
     root.minsize(460, 400)
     root.protocol("WM_DELETE_WINDOW", on_close)
@@ -2417,12 +2478,16 @@ def launch_gui():
 
 # ---------- Scanning Functions ----------
 def capture_once():
-    """Capture one scan from CAP_REGION and update overlay."""
+    """Capture one scan from CAP_REGION and update overlay.
+
+    Runs a single OCR pass with a timeout guard so a hung Ollama call cannot
+    stall the continuous-scan loop indefinitely.
+    """
     global last_result
     auto_aligned = perform_auto_alignment()
     if AUTO_ALIGN_ENABLED:
         logger.debug("Auto alignment %s before capture.", "succeeded" if auto_aligned else "did not match")
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         monitor = {
             "left": CAP_REGION["left"],
             "top": CAP_REGION["top"],
@@ -2432,8 +2497,22 @@ def capture_once():
         img = sct.grab(monitor)
         pil_img = Image.frombytes("RGB", img.size, img.rgb)
 
-    raw_text = ocr_with_ollama(pil_img)
-    logger.debug("OCR raw: %r", raw_text)
+    logger.debug(
+        "Capture region: left=%d top=%d w=%d h=%d",
+        CAP_REGION["left"], CAP_REGION["top"],
+        CAP_REGION["width"], CAP_REGION["height"],
+    )
+
+    # Run OCR in a thread so we can enforce a hard timeout.
+    # If Ollama hangs (e.g. GPU stall, model swap) the scan loop keeps running.
+    raw_text_holder: List[str] = []
+    ocr_thread = Thread(target=lambda: raw_text_holder.append(ocr_with_ollama(pil_img)), daemon=True)
+    ocr_thread.start()
+    ocr_thread.join(timeout=OLLAMA_TIMEOUT_S)
+    if ocr_thread.is_alive():
+        logger.warning("OCR ⚠ timed out after %ds — skipping this scan.", OLLAMA_TIMEOUT_S)
+        return
+    raw_text = raw_text_holder[0] if raw_text_holder else ""
     code, raw = extract_code_from_text(raw_text)
     info = lookup_deposit(code)
 
