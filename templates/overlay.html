@@ -389,7 +389,13 @@
 
     <!-- Scan history -->
     <div class="card">
-      <div class="card-label">Scan History</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-label" style="margin-bottom:0">Scan History</div>
+        <button id="clear-hist-btn" onclick="clearHistory()"
+          style="background:transparent;border:1px solid var(--border);color:var(--muted);
+                 font-size:10px;letter-spacing:1px;text-transform:uppercase;
+                 padding:3px 10px;border-radius:999px;cursor:pointer;">Clear</button>
+      </div>
       <div id="hist-body"><div class="hist-empty">No scans yet</div></div>
     </div>
 
@@ -398,6 +404,7 @@
 
 <div class="status-bar">
   <span id="align-lbl"><span class="sdot grey"></span>Alignment —</span>
+  <span id="scan-lbl"><span class="sdot grey"></span>Ready</span>
   <span id="time-lbl">Waiting…</span>
 </div>
 
@@ -405,10 +412,12 @@
 const TIER_COLOR = { LEGENDARY:'#FFD700', EPIC:'#FF8C00', RARE:'#E88AFF', UNCOMMON:'#63E64C', COMMON:'#87CEEB', OTHER:'#5f8da8' };
 const RARITY_COLOR = { legendary:'#FFD700', epic:'#FF8C00', rare:'#E88AFF', uncommon:'#63E64C', common:'#87CEEB' };
 
-let region      = 'STANTON';
-let lastCode    = null;
-let lastScanTs  = null;
-let history     = [];   // { name, deposits, tier, color, time, category }
+let region       = 'STANTON';
+let lastCode     = null;
+let lastScanTs   = null;
+let history      = [];   // { name, deposits, tier, color, time, code }
+let histSeeded   = false;
+let pollErrCount = 0;
 
 document.querySelectorAll('input[name="region"]').forEach(el =>
   el.addEventListener('change', e => { region = e.target.value; })
@@ -540,6 +549,34 @@ function renderAlignment(al) {
   }
 }
 
+// ── Render: scan status ───────────────────────────────────────
+function renderScanStatus(scanning) {
+  const el = document.getElementById('scan-lbl');
+  el.innerHTML = scanning
+    ? `<span class="sdot purple"></span>Scanning…`
+    : `<span class="sdot grey"></span>Ready`;
+}
+
+// ── Seed history from server on first successful poll ─────────
+function seedHistory(serverHistory) {
+  if (histSeeded || !serverHistory || !serverHistory.length) return;
+  histSeeded = true;
+  for (const h of serverHistory) {
+    const tier  = h.rarity ? h.rarity.toUpperCase() : 'OTHER';
+    const color = TIER_COLOR[tier] || TIER_COLOR.OTHER;
+    history.push({ name: h.name, deposits: h.deposits, tier, color,
+                   code: h.code, time: new Date(h.time * 1000) });
+  }
+  renderHistory();
+}
+
+// ── Clear history ────────────────────────────────────────────
+function clearHistory() {
+  history = [];
+  histSeeded = false;   // allow re-seed from server if page isn't reloaded
+  renderHistory();
+}
+
 // ── "Last scan" ticker ───────────────────────────────────────
 function tickTime() {
   const el = document.getElementById('time-lbl');
@@ -553,11 +590,21 @@ async function poll() {
   try {
     const r = await fetch('/status?region=' + region);
     const j = await r.json();
+    pollErrCount = 0;
     renderResult(j);
     renderComposition(j.table);
     renderAlignment(j.alignment);
+    renderScanStatus(j.scanning || false);
+    seedHistory(j.history);
     if (j.info) lastScanTs = lastScanTs || Date.now();
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    pollErrCount++;
+    // Exponential backoff capped at 8 s so a crashed server doesn't spam console.
+    const delay = Math.min(500 * Math.pow(2, pollErrCount - 1), 8000);
+    if (pollErrCount === 1) console.warn('Scanner overlay: lost connection, retrying…');
+    setTimeout(poll, delay);
+    return;
+  }
   setTimeout(poll, 500);
 }
 

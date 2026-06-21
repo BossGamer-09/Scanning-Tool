@@ -8,15 +8,15 @@ import sys
 import socket
 from urllib.parse import urlparse
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Lock
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw, ImageEnhance, ImageTk
 import cv2
 import numpy as np
 import mss
 import ollama
-from flask import Flask, jsonify, render_template_string, request, render_template
+from flask import Flask, jsonify, request, render_template
 import tkinter as tk
 from tkinter import ttk, colorchooser
 import keyboard  # hotkey support
@@ -537,8 +537,6 @@ ALIGNMENT_POLL_INTERVAL_MS = 500
 CONTINUOUS_CAPTURE_INTERVAL = 0.2
 INFO_OVERLAY_OFFSET = {"x": 0, "y": 0}
 label_color = "yellow"
-MIN_CONFIDENCE = 0.65
-DEBUG_SHOW_OVERLAY = True
 OLLAMA_MODEL = "qwen2.5vl:3b"   # vision model
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 CONFIGURED_OLLAMA_HOST = ""
@@ -689,9 +687,10 @@ def start_local_ollama_service(host: str, wait_seconds: float = 10.0) -> bool:
     logger.warning("Timed out waiting for Ollama service to start. Please start it manually.")
     return False
 
-# Regex for codes
+# Regex for codes — intentionally excludes '.' so "3855.0" matches as "3855"
+# and the decimal fraction is never concatenated into a bogus code like "38550".
 CODE_RE = re.compile(
-    r"(?:[A-Za-z]?-?\d[\d,\.]{1,10}|\d{2,10})",
+    r"(?:[A-Za-z]?-?\d[\d,]{1,10}|\d{2,10})",
     re.IGNORECASE
 )
 
@@ -700,6 +699,23 @@ last_result = {"code": None, "code_raw": None, "info": None,
 # Confirmation buffer: a code must appear on 2 consecutive scans before it is
 # reported.  This filters single-frame hallucinations from the AI model.
 _pending = {"code": None, "count": 0}
+# Prevents concurrent capture_once calls (hotkey thread vs continuous loop).
+_capture_lock = Lock()
+# Tracks the most recent OCR thread so timed-out "zombie" threads are detected
+# before a new Ollama request is fired, preventing request pile-up.
+_last_ocr_thread: Optional[Thread] = None
+# Pixel-level frame cache: if the capture region's raw bytes are identical to
+# the previous scan we skip the Ollama call and reuse the last result.
+# Cuts confirmation latency roughly in half — first scan pays Ollama, the
+# confirming scan is instant.  Hash misses when the HUD code changes.
+_last_capture_hash: Optional[int] = None
+_last_ocr_raw: str = ""
+# Server-side scan history so the web overlay survives a page reload.
+_scan_history: List[Dict] = []
+_SCAN_HISTORY_MAX = 20
+# Optional callback set by launch_gui so background scan threads can push
+# plain-text messages into the GUI status bar.
+_set_gui_status: Optional[Callable[[str], None]] = None
 last_alignment_info = {
     "enabled": AUTO_ALIGN_ENABLED,
     "matched": False,
@@ -1009,8 +1025,12 @@ def save_config():
         "INFO_OVERLAY_OFFSET": INFO_OVERLAY_OFFSET,
         "OLLAMA_HOST": CONFIGURED_OLLAMA_HOST,
     }
-    with open(CONFIG_FILE, "w") as f:
+    # Write to a temp file then atomically rename so a crash mid-write
+    # never leaves a truncated/corrupt config.json.
+    tmp_path = CONFIG_FILE + ".tmp"
+    with open(tmp_path, "w") as f:
         json.dump(data, f, indent=4)
+    os.replace(tmp_path, CONFIG_FILE)
     logger.info("Config saved.")
 
 
@@ -1023,8 +1043,16 @@ def resource_path(relative_path):
     return os.path.join(os.path.abspath("."), relative_path)
 
 rock_file = resource_path("RockTypes_2025-09-16.json")
-with open(rock_file, "r") as f:
-    ROCK_DATA = json.load(f)
+try:
+    with open(rock_file, "r") as f:
+        ROCK_DATA = json.load(f)
+except FileNotFoundError:
+    sys.exit(
+        f"ERROR: Rock data file not found: {rock_file}\n"
+        "Make sure RockTypes_2025-09-16.json is in the same directory as scan_deposits.py."
+    )
+except json.JSONDecodeError as _e:
+    sys.exit(f"ERROR: Rock data file is corrupted ({_e}). Re-download RockTypes_2025-09-16.json.")
 
 
 # ---------- Multiplier Codes ----------
@@ -1096,6 +1124,17 @@ for tier, data in ORE_TIERS.items():
     for ore in data["ores"]:
         ORE_VALUE_MAP[ore.upper()] = {"tier": tier, "color": data["color"]}
 
+# Maximum plausible deposit count per ore tier (matches RockTypes clusterCount
+# max of 13). Used by lookup_deposit to reject OCR hallucinations like
+# 68000 → Lindinium×20.
+TIER_DEPOSIT_CAP: Dict[str, int] = {
+    "LEGENDARY": 6,
+    "EPIC":      6,
+    "RARE":      10,
+    "UNCOMMON":  13,
+    "COMMON":    13,
+}
+
 
 # ---------- Build Deposit Tables ----------
 def build_deposit_tables(rock_data):
@@ -1133,18 +1172,36 @@ DEPOSIT_TABLES = {
 OLLAMA_TIMEOUT_S = 10
 
 # Set to True to save every captured image to debug_capture.png for inspection.
-OCR_DEBUG_SAVE = True
+# Defaults to False — enabling this in continuous mode writes ~5 PNGs/sec.
+OCR_DEBUG_SAVE = False
 OCR_DEBUG_PATH = "debug_capture.png"
 
 _OCR_PROMPT = (
     "This is a cropped screenshot from the Star Citizen game HUD. "
-    "It may contain a 3-6 digit numeric scan signature code. "
-    "If you can see a clear numeric code, reply with ONLY that number and nothing else. "
+    "It may contain a 3-5 digit numeric scan signature code. "
+    "If you can see a clear numeric code, reply with ONLY that integer number and nothing else — "
+    "no decimal points, no punctuation, no extra words. "
     "If the image is blank, blurry, or contains no clear numeric code, reply with exactly: NONE"
 )
 
+# Minimum pixel height the image is upscaled to before sending to the model.
+# The default capture region is ~30 px tall; very small text makes OCR
+# unreliable, so we enlarge to give the vision model enough detail to work with.
+OCR_MIN_HEIGHT = 80
+
+
+def preprocess_for_ocr(pil_img: Image.Image) -> Image.Image:
+    """Upscale small captures and boost contrast before sending to the model."""
+    if pil_img.height < OCR_MIN_HEIGHT:
+        scale = OCR_MIN_HEIGHT / pil_img.height
+        new_size = (max(1, int(pil_img.width * scale)), OCR_MIN_HEIGHT)
+        pil_img = pil_img.resize(new_size, Image.LANCZOS)
+    pil_img = ImageEnhance.Contrast(pil_img).enhance(1.6)
+    return pil_img
+
 
 def ocr_with_ollama(pil_img: Image.Image, model=OLLAMA_MODEL) -> str:
+    pil_img = preprocess_for_ocr(pil_img)
     buf = io.BytesIO()
     pil_img.save(buf, format="PNG")
     img_bytes = buf.getvalue()
@@ -1197,13 +1254,13 @@ def extract_code_from_text(raw_text: str):
         return None, raw_text
     raw = matches[0].upper()
     if any(ch.isdigit() for ch in raw):
-        m = re.match(r"([A-Za-z]?-?)([\d,\.]+)", raw)
+        m = re.match(r"([A-Za-z]?-?)([\d,]+)", raw)
         if m:
             prefix, digits = m.groups()
-            digits = digits.replace(",", "").replace(".", "")
+            digits = digits.replace(",", "")
             candidate = prefix + digits
         else:
-            candidate = raw.replace(",", "").replace(".", "")
+            candidate = raw.replace(",", "")
     else:
         candidate = raw
 
@@ -1233,17 +1290,6 @@ def lookup_deposit(code: str):
         # All 4.7 ore base codes are >= 3170. Anything below that is noise.
         if num_code < 3170:
             return None
-
-        # Maximum plausible deposit count per ore tier (matches RockTypes
-        # clusterCount max of 13). Eliminates OCR hallucinations like
-        # 68000 → Lindinium×20.
-        TIER_DEPOSIT_CAP = {
-            "LEGENDARY": 6,
-            "EPIC":      6,
-            "RARE":      10,
-            "UNCOMMON":  13,
-            "COMMON":    13,
-        }
 
         candidates: List[Tuple[int, dict]] = []
         for base_code, info in MULTIPLIER_CODES.items():
@@ -1621,7 +1667,7 @@ def _animate_capture_overlay() -> None:
         return
 
     try:
-        capture_overlay_animation_job = capture_overlay_root.after(33, _animate_capture_overlay)
+        capture_overlay_animation_job = capture_overlay_root.after(100, _animate_capture_overlay)
     except tk.TclError:
         capture_overlay_animation_job = None
 
@@ -1636,7 +1682,7 @@ def start_capture_overlay_animation(*, force: bool = False) -> None:
 
     if capture_overlay_animation_job is None:
         try:
-            capture_overlay_animation_job = capture_overlay_root.after(33, _animate_capture_overlay)
+            capture_overlay_animation_job = capture_overlay_root.after(100, _animate_capture_overlay)
         except tk.TclError:
             capture_overlay_animation_job = None
 
@@ -2025,7 +2071,13 @@ def launch_gui():
                     }
                 )
             else:
-                match_found = perform_auto_alignment()
+                # Only run alignment from this GUI-thread poll when no scan is
+                # in progress.  If a scan IS running, _capture_once_impl already
+                # calls perform_auto_alignment() and writes last_alignment_info,
+                # so we just read the result — avoiding a concurrent write race
+                # on CAP_REGION and a redundant mss grab + OpenCV pass.
+                if not _capture_lock.locked():
+                    perform_auto_alignment()
                 info = last_alignment_info
                 if info.get("matched"):
                     message = (
@@ -2034,7 +2086,7 @@ def launch_gui():
                     capture_msg = f"Auto alignment adjusted CAP_REGION: {CAP_REGION}"
                     if status_var.get() != capture_msg:
                         status_var.set(capture_msg)
-                elif not match_found:
+                elif not info.get("matched"):
                     message = "Anchor match not found. Adjust search region or add templates."
         else:
             message = "Head sway compensation disabled."
@@ -2064,7 +2116,8 @@ def launch_gui():
     def on_close():
         global capture_overlay_root, capture_overlay_canvas, capture_rect_id
         global anchor_overlay_root, anchor_overlay_canvas, anchor_rect_id
-        global info_overlay_root, info_overlay_canvas, info_text_id
+        global info_overlay_root, info_overlay_canvas, info_text_id, _set_gui_status
+        _set_gui_status = None
 
         stop_capture_overlay_animation()
 
@@ -2101,6 +2154,9 @@ def launch_gui():
     anchor_status_var = tk.StringVar(value="Head sway compensation ready.")
     ollama_host_var = tk.StringVar(value=CONFIGURED_OLLAMA_HOST)
     ollama_active_host_var = tk.StringVar()
+
+    global _set_gui_status
+    _set_gui_status = lambda msg: status_var.set(msg)
 
     def refresh_active_host_label() -> None:
         ollama_active_host_var.set(f"Active host: {get_ollama_host()}")
@@ -2183,6 +2239,11 @@ def launch_gui():
     canvas.bind_all("<Button-4>", lambda e: _on_mousewheel_linux(e, -1))
     canvas.bind_all("<Button-5>", lambda e: _on_mousewheel_linux(e, 1))
 
+    # Read actual screen dimensions so sliders cover the full display,
+    # including 4K, ultrawide, and multi-monitor virtual desktops.
+    _sw = root.winfo_screenwidth()
+    _sh = root.winfo_screenheight()
+
     frm_region = ttk.LabelFrame(main, text="Capture Region", style="Glass.TLabelframe")
     frm_region.pack(fill="x", padx=5, pady=8)
 
@@ -2190,7 +2251,7 @@ def launch_gui():
         frm_region,
         text="Left",
         minimum=0,
-        maximum=3000,
+        maximum=_sw,
         initial=CAP_REGION["left"],
         command=update_region_from_sliders,
     )
@@ -2199,7 +2260,7 @@ def launch_gui():
         frm_region,
         text="Top",
         minimum=0,
-        maximum=2000,
+        maximum=_sh,
         initial=CAP_REGION["top"],
         command=update_region_from_sliders,
     )
@@ -2208,7 +2269,7 @@ def launch_gui():
         frm_region,
         text="Width",
         minimum=50,
-        maximum=1000,
+        maximum=_sw,
         initial=CAP_REGION["width"],
         command=update_region_from_sliders,
     )
@@ -2217,7 +2278,7 @@ def launch_gui():
         frm_region,
         text="Height",
         minimum=20,
-        maximum=500,
+        maximum=_sh,
         initial=CAP_REGION["height"],
         command=update_region_from_sliders,
         padding=(0, 0),
@@ -2446,7 +2507,32 @@ def launch_gui():
             loop_btn_var.set("Start Loop")
             status_var.set("Continuous scan stopped.")
 
-    ttk.Button(button_row1, text="Single Scan", command=capture_once, style="Glass.TButton").pack(side="left", padx=5)
+    # Keep the loop button label in sync even when the hotkey (Ctrl+7) is used.
+    def _sync_loop_btn():
+        loop_btn_var.set("Stop Loop" if continuous_mode else "Start Loop")
+        try:
+            root.after(400, _sync_loop_btn)
+        except tk.TclError:
+            pass
+
+    # Single Scan button runs OCR in a background thread so the GUI stays
+    # responsive during the up-to-10 s Ollama call.
+    scan_btn = ttk.Button(button_row1, text="Single Scan", style="Glass.TButton")
+
+    def _on_scan_click():
+        if _capture_lock.locked():
+            return
+        scan_btn.config(state="disabled", text="Scanning…")
+        def _run():
+            capture_once()
+            if _tk_root:
+                _tk_root.after(0, lambda: scan_btn.config(state="normal", text="Single Scan"))
+        Thread(target=_run, daemon=True).start()
+
+    scan_btn.config(command=_on_scan_click)
+    scan_btn.pack(side="left", padx=5)
+    _sync_loop_btn()
+
     ttk.Button(button_row1, textvariable=loop_btn_var, command=_toggle_continuous_ui, style="Glass.TButton").pack(side="left", padx=5)
     ttk.Button(button_row1, text="Update Overlay", command=update_overlay_region, style="Glass.TButton").pack(side="left", padx=5)
 
@@ -2481,9 +2567,21 @@ def capture_once():
     """Capture one scan from CAP_REGION and update overlay.
 
     Runs a single OCR pass with a timeout guard so a hung Ollama call cannot
-    stall the continuous-scan loop indefinitely.
+    stall the continuous-scan loop indefinitely.  Non-blocking: if a scan is
+    already in progress (e.g. hotkey pressed during continuous mode) this call
+    returns immediately rather than stacking a second Ollama request.
     """
-    global last_result
+    if not _capture_lock.acquire(blocking=False):
+        logger.debug("Scan already in progress — skipping duplicate trigger.")
+        return
+    try:
+        _capture_once_impl()
+    finally:
+        _capture_lock.release()
+
+
+def _capture_once_impl():
+    global last_result, _last_ocr_thread, _last_capture_hash, _last_ocr_raw
     auto_aligned = perform_auto_alignment()
     if AUTO_ALIGN_ENABLED:
         logger.debug("Auto alignment %s before capture.", "succeeded" if auto_aligned else "did not match")
@@ -2495,7 +2593,7 @@ def capture_once():
             "height": CAP_REGION["height"],
         }
         img = sct.grab(monitor)
-        pil_img = Image.frombytes("RGB", img.size, img.rgb)
+        raw_bytes = img.rgb   # extract while DC is still open
 
     logger.debug(
         "Capture region: left=%d top=%d w=%d h=%d",
@@ -2503,16 +2601,43 @@ def capture_once():
         CAP_REGION["width"], CAP_REGION["height"],
     )
 
-    # Run OCR in a thread so we can enforce a hard timeout.
-    # If Ollama hangs (e.g. GPU stall, model swap) the scan loop keeps running.
-    raw_text_holder: List[str] = []
-    ocr_thread = Thread(target=lambda: raw_text_holder.append(ocr_with_ollama(pil_img)), daemon=True)
-    ocr_thread.start()
-    ocr_thread.join(timeout=OLLAMA_TIMEOUT_S)
-    if ocr_thread.is_alive():
-        logger.warning("OCR ⚠ timed out after %ds — skipping this scan.", OLLAMA_TIMEOUT_S)
-        return
-    raw_text = raw_text_holder[0] if raw_text_holder else ""
+    # ── Frame pixel cache ─────────────────────────────────────────────────────
+    # Hash the raw pixel bytes.  If they match the previous scan the HUD code
+    # hasn't changed, so the Ollama result will be identical — skip the model
+    # call entirely and reuse the cached text.  This makes the confirming scan
+    # instant (~0 ms) instead of another full 2 s inference round-trip.
+    content_hash = hash(raw_bytes)
+    if content_hash == _last_capture_hash:
+        raw_text = _last_ocr_raw
+        logger.debug("OCR ↩ identical frame — reusing cached result %r", raw_text or "NONE")
+    else:
+        # Screen content changed — need a fresh Ollama call.
+        pil_img = Image.frombytes("RGB", img.size, raw_bytes)
+
+        # Guard against zombie OCR threads from previous timeouts.
+        if _last_ocr_thread and _last_ocr_thread.is_alive():
+            logger.warning(
+                "OCR ⚠ previous request still pending — skipping scan to avoid Ollama overload."
+            )
+            return
+
+        # Run OCR in a thread so we can enforce a hard timeout.
+        raw_text_holder: List[str] = []
+        ocr_thread = Thread(
+            target=lambda: raw_text_holder.append(ocr_with_ollama(pil_img)), daemon=True
+        )
+        _last_ocr_thread = ocr_thread
+        ocr_thread.start()
+        ocr_thread.join(timeout=OLLAMA_TIMEOUT_S)
+        if ocr_thread.is_alive():
+            logger.warning("OCR ⚠ timed out after %ds — skipping this scan.", OLLAMA_TIMEOUT_S)
+            return
+        raw_text = raw_text_holder[0] if raw_text_holder else ""
+
+        # Update cache only on a completed (non-timed-out) call.
+        _last_capture_hash = content_hash
+        _last_ocr_raw = raw_text
+    # ─────────────────────────────────────────────────────────────────────────
     code, raw = extract_code_from_text(raw_text)
     info = lookup_deposit(code)
 
@@ -2535,15 +2660,26 @@ def capture_once():
     result_changed = confirmed and (code != prev_code)
 
     if confirmed:
+        # code=None confirmed twice → info is None → overlay clears cleanly.
         last_result = new_result
         update_overlay_label(info, code=code, raw_text=raw or raw_text)
-    elif code is None:
-        # Always clear the overlay immediately when nothing is detected.
-        last_result = new_result
-        update_overlay_label(None)
 
     if info and result_changed:
         logger.info("Deposit identified: %s (code %s)", info.get("name"), code)
+        if _set_gui_status and _tk_root:
+            _msg = (f"Found: {info['name']} ×{info.get('deposits','?')}"
+                    f"  [{info.get('rarity','').title()}]  code {code}")
+            _tk_root.after(0, lambda m=_msg: _set_gui_status(m))  # type: ignore[misc]
+        _scan_history.insert(0, {
+            "name":     info.get("name"),
+            "key":      info.get("key"),
+            "deposits": info.get("deposits"),
+            "rarity":   info.get("rarity"),
+            "code":     code,
+            "time":     time.time(),
+        })
+        if len(_scan_history) > _SCAN_HISTORY_MAX:
+            _scan_history.pop()
     elif result_changed and code:
         logger.debug("Unrecognised code: %s (raw: %s)", code, raw_text)
     elif not code and (prev_code is not None):
@@ -2560,11 +2696,18 @@ def toggle_continuous():
 
 
 def continuous_scan_loop():
-    """Run scans repeatedly until continuous_mode is turned off."""
+    """Run scans repeatedly until continuous_mode is turned off.
+
+    Sleeps only the time remaining after each scan so the configured interval
+    is a wall-clock cadence, not scan_time + interval.
+    """
     while continuous_mode:
+        t0 = time.monotonic()
         capture_once()
-        interval = max(0.1, float(CONTINUOUS_CAPTURE_INTERVAL))
-        time.sleep(interval)
+        elapsed = time.monotonic() - t0
+        remaining = max(0.0, float(CONTINUOUS_CAPTURE_INTERVAL) - elapsed)
+        if remaining:
+            time.sleep(remaining)
 
 
 
@@ -2624,6 +2767,8 @@ def status():
         "confidence": float(result.get("confidence", 0.0)) if isinstance(result, dict) else 0.0,
         "raw_text": result.get("raw_text") if isinstance(result, dict) else None,
         "table": table,
+        "scanning": _capture_lock.locked(),
+        "history": list(_scan_history),   # snapshot — avoids mutation-during-serialisation
     }
 
     return jsonify(response)
@@ -2638,12 +2783,27 @@ def hotkey_listener():
         logger.info("Hotkeys registered: '7' for single scan, 'Ctrl+7' for continuous toggle, '8' for border toggle")
         keyboard.wait()
     except Exception as e:
-        logger.warning(f"Could not set up global hotkeys: {e}")
-        logger.info("Note: Linux Support is being tested.")
+        logger.warning("Could not set up global hotkeys: %s", e)
+        if sys.platform == "win32":
+            logger.info("Tip: run the program as Administrator to enable global hotkeys on Windows.")
+        else:
+            logger.info("Tip: run with sudo, or add your user to the 'input' group (Linux) to enable global hotkeys.")
 
 
 # ---------- Main ----------
 if __name__ == "__main__":
+    # Tell Windows that we handle DPI ourselves so mss screen coordinates and
+    # Tkinter overlay positions stay in sync on scaled (125 %, 150 %, …) displays.
+    if sys.platform == "win32":
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()   # fallback for Windows 7/8
+            except Exception:
+                pass
+
     load_config()
     # Ensure Ollama + model before starting
     ensure_ollama_installed()
